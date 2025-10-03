@@ -20,6 +20,7 @@ public class WebsiteServer {
 	private int port;
 	private boolean previewMedia;
 	private String[] shareFolders = new String[0];
+	private boolean generateVideoThumbnails;
 	public static int maximumFileNameLength;
 	private HttpServer server;
 	
@@ -29,8 +30,10 @@ public class WebsiteServer {
 	
 	private void init() {
 		port = SimpleHttpServerMain.config.getIntValue("Port");
+		FileHandler.BUFFER_SIZE = SimpleHttpServerMain.config.getIntValue("Download-Buffersize");
 		maximumFileNameLength = SimpleHttpServerMain.config.getIntValue("Maximum-FileName-Length");
 		previewMedia = SimpleHttpServerMain.config.getBooleanValue("Preview-Media");
+		generateVideoThumbnails = SimpleHttpServerMain.config.getBooleanValue("Generate-VideoThumbnails");
 		
 		String folders = SimpleHttpServerMain.config.getValue("Share-Folders").trim();
 		if(folders.endsWith(";")) {
@@ -115,10 +118,12 @@ public class WebsiteServer {
     }
 	
 	private void addFileHandlers() throws IOException {
-		server.createContext("/dl", new FileHandler("dl", previewMedia));
+		server.createContext("/dl", new FileHandler("dl", previewMedia, false));
+		server.createContext("/.thumbs", new FileHandler(".thumbs", false, false));
 		
 		for(String path: shareFolders) {
-			server.createContext("/" + path, new FileHandler(path, previewMedia));
+			System.out.println("Externer Ordner \"" + path + "\" wird geshared");
+			server.createContext("/" + path, new FileHandler(path, previewMedia, generateVideoThumbnails));
 		}
 		
 		

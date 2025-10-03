@@ -3,6 +3,7 @@ package de.dion.httpserver;
 
 import java.io.File;
 import java.io.IOException;
+import java.io.InputStream;
 import java.io.OutputStream;
 import java.io.RandomAccessFile;
 import java.io.UnsupportedEncodingException;
@@ -10,6 +11,7 @@ import java.net.URI;
 import java.net.URLDecoder;
 import java.net.URLEncoder;
 import java.nio.file.Files;
+import java.security.MessageDigest;
 import java.text.DecimalFormat;
 import java.text.DecimalFormatSymbols;
 import java.util.Arrays;
@@ -17,6 +19,7 @@ import java.util.Date;
 import java.util.HashMap;
 import java.util.Locale;
 import java.util.Map;
+import java.util.concurrent.TimeUnit;
 
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpHandler;
@@ -24,20 +27,27 @@ import com.sun.net.httpserver.HttpHandler;
 public class FileHandler implements HttpHandler {
     private final File baseDir;
     private final boolean previewMedia;
-    private static final int BUFFER_SIZE = 8192;
+    private final File thumbDir;
+    private final boolean generateVideoThumbnails;
+    public static int BUFFER_SIZE;
 
     /**
-     * @param basePath     Pfad zum Verzeichnis, das serviert werden soll (kann absolut sein, z.B. "Z:\\admin1\\Music")
+     * @param basePath     Pfad zum Verzeichnis, das serviert werden soll (kann absolut sein, z.B. "Z:\admin1\Music")
      * @param previewMedia Wenn true: UI zeigt "View" + ?preview=1 wird ausgewertet. Wenn false: keine Preview-Funktionalität.
      * @throws IOException wenn basePath nicht existiert oder nicht erreichbar ist
      */
-    public FileHandler(String basePath, boolean previewMedia) throws IOException {
+    public FileHandler(String basePath, boolean previewMedia, boolean generateVideoThumbnails) throws IOException {
         File bd = new File(basePath);
         if (!bd.exists() || !bd.isDirectory()) {
             throw new IOException("Base path does not exist or is not a directory: " + basePath);
         }
         this.baseDir = bd.getCanonicalFile();
         this.previewMedia = previewMedia;
+        this.generateVideoThumbnails = generateVideoThumbnails;
+        this.thumbDir = new File(".thumbs");
+        if (!thumbDir.exists()) {
+            thumbDir.mkdirs();
+        }
     }
 
     @Override
@@ -134,48 +144,126 @@ public class FileHandler implements HttpHandler {
                 || mimeType.startsWith("text/");
     }
 
-    private String makePreviewPage(String relUrl, String mimeType) {
+    private String makePreviewPage(String relUrl, String mimeType) throws UnsupportedEncodingException {
         // relUrl ist bereits ein vollständig encodeter Pfad inkl. contextPath, z.B. "/dl/sub/My%20Song.mp3"
         String rawUrl = relUrl + (relUrl.contains("?") ? "&" : "?") + "raw=1";
         StringBuilder sb = new StringBuilder();
-        sb.append("<!doctype html>\n<html><head><meta charset=\"utf-8\"><title>Preview</title>");
-        sb.append("<style>body{background:#111827;color:#e6eef8;font-family:Segoe UI, Roboto, Arial;padding:18px;margin:0;}\n");
-        sb.append(".wrap{max-width:1100px;margin:0 auto;}\n");
-        sb.append(".top{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;}\n");
-        sb.append("a.btn{background:#0ea5a4;color:#022c2b;padding:8px 12px;border-radius:6px;text-decoration:none;margin-left:8px;display:inline-block;}\n");
-        sb.append("h2{color:#ff9900;margin:0 0 8px 0;}\n");
-        sb.append("video,audio{background:#000;border-radius:6px;display:block;width:100%;max-height:80vh;}\n");
-        sb.append("iframe{border-radius:6px;border:1px solid #222;}\n");
-        sb.append("</style>");
-        sb.append("</head><body><div class=\"wrap\">\n");
-        sb.append("<div class=\"top\"><div><h2>Preview</h2><div style=\"color:#9ca3af;font-size:0.95rem;margin-top:6px;\">Preview für: ").append(escapeHtml(relUrl)).append("</div></div>");
-        sb.append("<div><a class=\"btn\" href=\"").append(relUrl).append("?download=1\">Download</a>");
-        sb.append("</div></div>\n");
+        sb.append("\n<!doctype html><html><head><meta charset=\"utf-8\"><title>Preview</title>");
+        sb.append("\n<style>body{background:#111827;color:#e6eef8;font-family:Segoe UI, Roboto, Arial;padding:18px;margin:0;}");
+        sb.append("\n.wrap{max-width:1100px;margin:0 auto;}");
+        sb.append("\n.top{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;}");
+        sb.append("\na.btn{background:#0ea5a4;color:#022c2b;padding:8px 12px;border-radius:6px;text-decoration:none;margin-left:8px;display:inline-block;}");
+        sb.append("\nh2{color:#ff9900;margin:0 0 8px 0;}");
+        sb.append("\nvideo,audio{background:#000;border-radius:6px;display:block;width:100%;max-height:80vh;}");
+        sb.append("\niframe{border-radius:6px;border:1px solid #222;}");
+        sb.append("\n</style>");
+        sb.append("\n</head><body><div class=\"wrap\">");
+        sb.append("\n<div class=\"top\"><div><h2>Preview</h2><div style=\"color:#9ca3af;font-size:0.95rem;margin-top:6px;\">Preview für: ")
+        .append(URLDecoder.decode(escapeHtml(relUrl), "UTF-8"))
+        .append("</div></div>");
+        sb.append("\n<div><a class=\"btn\" href=\"").append(relUrl).append("?download=1\">Download</a>");
+        sb.append("\n</div></div>");
 
         if (mimeType.startsWith("video/")) {
-            sb.append("<video controls preload=\"metadata\" id=\"mediaPlayer\">\n");
-            sb.append("<source src=\"").append(rawUrl).append("\" type=\"").append(mimeType).append("\">\n");
-            sb.append("Ihr Browser unterstützt das Video-Tag nicht. <a href=\"").append(rawUrl).append("\">Download</a>\n");
-            sb.append("</video>\n");
-            sb.append("<script>const vp=document.getElementById('mediaPlayer');vp.volume=localStorage.getItem('userVolume')?parseFloat(localStorage.getItem('userVolume')):0.2;vp.addEventListener('volumechange',function(){localStorage.setItem('userVolume',this.volume);});</script>\n");
+            sb.append("\n<video controls preload=\"metadata\" id=\"mediaPlayer\">");
+            sb.append("\n<source src=\"").append(rawUrl).append("\" type=\"").append(mimeType).append("\">");
+            sb.append("\nIhr Browser unterstützt das Video-Tag nicht. <a href=\"").append(rawUrl).append("\">Download</a>");
+            sb.append("\n</video>");
+            sb.append("\n<script>const vp=document.getElementById('mediaPlayer');vp.volume=localStorage.getItem('userVolume')?parseFloat(localStorage.getItem('userVolume')):0.2;vp.addEventListener('volumechange',function(){localStorage.setItem('userVolume',this.volume);});</script>");
         } else if (mimeType.startsWith("audio/")) {
-            sb.append("<audio controls preload=\"metadata\" id=\"mediaPlayer\">\n");
-            sb.append("<source src=\"").append(rawUrl).append("\" type=\"").append(mimeType).append("\">\n");
-            sb.append("Ihr Browser unterstützt das Audio-Tag nicht. <a href=\"").append(rawUrl).append("\">Download</a>\n");
-            sb.append("</audio>\n");
-            sb.append("<script>const ap=document.getElementById('mediaPlayer');ap.volume=localStorage.getItem('userVolume')?parseFloat(localStorage.getItem('userVolume')):0.2;ap.addEventListener('volumechange',function(){localStorage.setItem('userVolume',this.volume);});</script>\n");
+        	sb.append("\n<audio controls preload=\"metadata\" id=\"mediaPlayer\" autoplay>");
+            sb.append("\n<source src=\"").append(rawUrl).append("\" type=\"").append(mimeType).append("\">");
+            sb.append("\nIhr Browser unterstützt das Audio-Tag nicht. <a href=\"").append(rawUrl).append("\">Download</a>");
+            sb.append("\n</audio>");
+            sb.append("\n<script>const ap=document.getElementById('mediaPlayer');ap.volume=localStorage.getItem('userVolume')?parseFloat(localStorage.getItem('userVolume')):0.2;ap.addEventListener('volumechange',function(){localStorage.setItem('userVolume',this.volume);});</script>");
         } else if (mimeType.startsWith("image/")) {
-            sb.append("<div style=\"display:flex;justify-content:center;\"><img src=\"").append(rawUrl).append("\" alt=\"image\" style=\"max-width:100%;height:auto;border-radius:8px;\"></div>\n");
+            sb.append("\n<div style=\"display:flex;justify-content:center;\"><img src=\"").append(rawUrl).append("\" alt=\"image\" style=\"max-width:100%;height:auto;border-radius:8px;\"></div>");
         } else if (mimeType.equals("application/pdf")) {
-            sb.append("<iframe src=\"").append(rawUrl).append("\" style=\"width:100%;height:80vh;border:none;\"></iframe>\n");
+            sb.append("\n<iframe src=\"").append(rawUrl).append("\" style=\"width:100%;height:80vh;border:none;\"></iframe>");
         } else if (mimeType.startsWith("text/")) {
-            sb.append("<iframe src=\"").append(rawUrl).append("\" style=\"width:100%;height:80vh;border:none;background:#fff;color:#000;\"></iframe>\n");
+            sb.append("\n<iframe src=\"").append(rawUrl).append("\" style=\"width:100%;height:80vh;border:none;background:#fff;color:#000;\"></iframe>");
         } else {
-            sb.append("<p>Preview nicht verfügbar. <a href=\"").append(rawUrl).append("\">Datei öffnen</a></p>\n");
+            sb.append("\n<p>Preview nicht verfügbar. <a href=\"").append(rawUrl).append("\">Datei öffnen</a></p>");
         }
 
-        sb.append("</div></body></html>");
+        sb.append("\n</div></body></html>");
         return sb.toString();
+    }
+
+    /**
+     * Versucht, ein Thumbnail für ein Video zu erzeugen (ffmpeg wird dafür verwendet). Die Thumbs werden
+     * im Unterordner ".thumbs" innerhalb des Base-Verzeichnisses als <sha1>.jpg gespeichert.
+     * Wenn ffmpeg nicht verfügbar ist oder die Generierung fehlschlägt, wird null zurückgegeben und
+     * das Listing zeigt stattdessen das Icon an.
+     */
+    private File getOrCreateVideoThumbnail(File video) throws IOException {
+        try {
+            String rel = getRelativePath(video);
+            if (rel.startsWith("/")) rel = rel.substring(1);
+            String name = sha1Hex(rel) + ".jpg";
+            File out = new File(thumbDir, name);
+            if (out.exists() && out.length() > 0) return out;
+            out.getParentFile().mkdirs();
+            boolean ok = generateThumbnailWithFfmpeg(video, out);
+            if (ok) return out;
+        } catch (Exception e) {
+            System.err.println("Thumbnail generation failed: " + e.getMessage());
+        }
+        return null;
+    }
+
+    private String sha1Hex(String s) {
+        try {
+            MessageDigest md = MessageDigest.getInstance("SHA-1");
+            byte[] d = md.digest(s.getBytes("UTF-8"));
+            StringBuilder sb = new StringBuilder();
+            for (byte b : d) sb.append(String.format("%02x", b & 0xff));
+            return sb.toString();
+        } catch (Exception e) {
+            return Integer.toHexString(s.hashCode());
+        }
+    }
+
+    private boolean generateThumbnailWithFfmpeg(File video, File thumb) throws IOException, InterruptedException {
+    	if(!generateVideoThumbnails) {
+    		return false;
+    	}
+    	System.out.println("Video Thumbnail für \"" + video.getName() + "\" wird generiert...");
+        // Kommando: ffmpeg -y -ss 00:00:01 -i <video> -frames:v 1 -q:v 2 -vf scale=320:-1 <thumb>
+        ProcessBuilder pb = new ProcessBuilder(
+                "ffmpeg",
+                "-y",
+                "-ss",
+                "00:00:10",
+                "-i",
+                video.getAbsolutePath(),
+                "-frames:v",
+                "1",
+                "-q:v",
+                "2",
+                "-vf",
+                "scale=320:-1",
+                thumb.getAbsolutePath()
+        );
+        pb.redirectErrorStream(true);
+        Process p = pb.start();
+
+        // read output to avoid blocking
+        try (InputStream is = p.getInputStream()) {
+            byte[] buf = new byte[1024];
+            while (is.read(buf) != -1) {
+                // discard, but ensures stream buffer doesn't fill
+            }
+        } catch (IOException ignore) {
+        }
+
+        boolean finished = p.waitFor(8, TimeUnit.SECONDS);
+        if (!finished) {
+            p.destroy();
+            return false;
+        }
+        int exit = p.exitValue();
+        return exit == 0 && thumb.exists() && thumb.length() > 0;
     }
 
     private void serveFileWithRange(HttpExchange exchange, File file, String mimeType, boolean inline) throws IOException {
@@ -245,82 +333,82 @@ public class FileHandler implements HttpHandler {
 
     private String generateDirectoryListing(String contextPath, File dir) throws IOException {
         StringBuilder sb = new StringBuilder();
-        sb.append("<!DOCTYPE html>\n");
-        sb.append("<html lang=\"de\">\n");
-        sb.append("<head>\n");
-        sb.append("  <meta charset=\"utf-8\">\n");
-        sb.append("  <meta name=\"viewport\" content=\"width=device-width,initial-scale=1\">\n");
-        sb.append("  <title>Index of ").append(escapeHtml(getRelativePath(dir))).append("</title>\n");
+        sb.append("\n<!DOCTYPE html>");
+        sb.append("\n<html lang=\"de\">");
+        sb.append("\n<head>");
+        sb.append("\n  <meta charset=\"utf-8\">");
+        sb.append("\n  <meta name=\"viewport\" content=\"width=device-width,initial-scale=1\">");
+        sb.append("\n  <title>Index of ").append(escapeHtml(getRelativePath(dir))).append("</title>");
 
         // CSS -- moderne, dunkle Listing-Page mit Buttons, Icons, Thumbs, Lightbox
-        sb.append("  <style>\n");
-        sb.append("    :root{--bg:#0b1320;--card:#0f1724;--muted:#9aa4b2;--accent:#ff9900;--link:#00aaff;--ok:#00ff88;}\n");
-        sb.append("    body{background:var(--bg);color:#e6eef8;font-family:Segoe UI,Roboto,Arial,\"Helvetica Neue\",sans-serif;margin:0;padding:20px;}\n");
-        sb.append("    .container{max-width:1100px;margin:0 auto;}\n");
-        sb.append("    header{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:14px;}\n");
-        sb.append("    header h1{margin:0;font-size:1.4rem;color:var(--accent);}\n");
-        sb.append("    .controls{display:flex;gap:8px;align-items:center;}\n");
-        sb.append("    .search{padding:8px 12px;border-radius:8px;border:1px solid #1f2937;background:#0b1220;color:#e6eef8;min-width:180px;}\n");
-        sb.append("    .breadcrumb{color:var(--muted);font-size:0.95rem;}\n");
-        sb.append("    table{width:100%;border-collapse:collapse;background:var(--card);border-radius:8px;overflow:hidden;}\n");
-        sb.append("    thead{background:#071124;color:var(--muted);}\n");
-        sb.append("    th,td{padding:12px 14px;text-align:left;border-bottom:1px solid rgba(255,255,255,0.03);vertical-align:middle;}\n");
-        sb.append("    th{font-size:0.9rem;cursor:pointer;user-select:none;}\n");
-        sb.append("    tbody tr:hover{background:linear-gradient(90deg, rgba(255,255,255,0.02), transparent);}\n");
-        sb.append("    .fname{display:flex;align-items:center;gap:12px;}\n");
-        sb.append("    .icon{width:36px;height:36px;display:inline-flex;align-items:center;justify-content:center;border-radius:6px;background:#08111b;color:#9fb4c8;}\n");
-        sb.append("    .thumb{width:56px;height:40px;object-fit:cover;border-radius:6px;border:1px solid rgba(255,255,255,0.04);}\n");
-        sb.append("    .name a{color:#ffffff;text-decoration:none;font-weight:600;}\n");
-        sb.append("    .muted{color:var(--muted);font-size:0.95rem;}\n");
-        sb.append("    .actions a{display:inline-block;padding:6px 10px;border-radius:6px;text-decoration:none;font-weight:600;margin-right:6px;}\n");
-        sb.append("    .btn-download{background:linear-gradient(180deg,#07243a,#053049);color:var(--link);}\n");
-        sb.append("    .btn-view{background:linear-gradient(180deg,#0b3a21,#08361b);color:var(--ok);}\n");
-        sb.append("    .size{text-align:right;}\n");
-        sb.append("    .date{width:220px;}\n");
-        sb.append("    @media (max-width:800px){thead{display:none;}table,tbody,td,tr{display:block;width:100%;}td{box-sizing:border-box;padding:10px;}td:before{content:attr(data-label);display:block;font-weight:700;margin-bottom:6px;color:var(--muted);} .size{text-align:left;} .date{width:auto;} }");
-        sb.append("    /* Lightbox */\n");
-        sb.append("    .lightbox{display:none;position:fixed;inset:0;background:rgba(0,0,0,0.85);align-items:center;justify-content:center;padding:20px;z-index:9999;}\n");
-        sb.append("    .lightbox img{max-width:calc(100% - 40px);max-height:calc(100% - 40px);border-radius:8px;}\n");
-        sb.append("    .lb-close{position:fixed;top:16px;right:20px;color:#fff;font-size:22px;cursor:pointer;}\n");
-        sb.append("  </style>\n");
+        sb.append("\n  <style>");
+        sb.append("\n    :root{--bg:#0b1320;--card:#0f1724;--muted:#9aa4b2;--accent:#ff9900;--link:#00aaff;--ok:#00ff88;}");
+        sb.append("\n    body{background:var(--bg);color:#e6eef8;font-family:Segoe UI,Roboto,Arial,\"Helvetica Neue\",sans-serif;margin:0;padding:20px;}");
+        sb.append("\n    .container{max-width:1100px;margin:0 auto;}");
+        sb.append("\n    header{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:14px;}");
+        sb.append("\n    header h1{margin:0;font-size:1.4rem;color:var(--accent);}");
+        sb.append("\n    .controls{display:flex;gap:8px;align-items:center;}");
+        sb.append("\n    .search{padding:8px 12px;border-radius:8px;border:1px solid #1f2937;background:#0b1220;color:#e6eef8;min-width:180px;}");
+        sb.append("\n    .breadcrumb{color:var(--muted);font-size:0.95rem;}");
+        sb.append("\n    table{width:100%;border-collapse:collapse;background:var(--card);border-radius:8px;overflow:hidden;}");
+        sb.append("\n    thead{background:#071124;color:var(--muted);}");
+        sb.append("\n    th,td{padding:12px 14px;text-align:left;border-bottom:1px solid rgba(255,255,255,0.03);vertical-align:middle;}");
+        sb.append("\n    th{font-size:0.9rem;cursor:pointer;user-select:none;}");
+        sb.append("\n    tbody tr:hover{background:linear-gradient(90deg, rgba(255,255,255,0.02), transparent);}");
+        sb.append("\n    .fname{display:flex;align-items:center;gap:12px;}");
+        sb.append("\n    .icon{width:36px;height:36px;display:inline-flex;align-items:center;justify-content:center;border-radius:6px;background:#08111b;color:#9fb4c8;}");
+        sb.append("\n    .thumb{width:86px;height:56px;object-fit:cover;border-radius:6px;border:1px solid rgba(255,255,255,0.04);box-shadow:0 2px 6px rgba(0,0,0,0.5);}");
+        sb.append("\n    .name a{color:#ffffff;text-decoration:none;font-weight:600;}");
+        sb.append("\n    .muted{color:var(--muted);font-size:0.95rem;}");
+        sb.append("\n    .actions a{display:inline-block;padding:6px 10px;border-radius:6px;text-decoration:none;font-weight:600;margin-right:6px;}");
+        sb.append("\n    .btn-download{background:linear-gradient(180deg,#07243a,#053049);color:var(--link);}");
+        sb.append("\n    .btn-view{background:linear-gradient(180deg,#0b3a21,#08361b);color:var(--ok);}");
+        sb.append("\n    .size{text-align:right;}");
+        sb.append("\n    .date{width:220px;}");
+        sb.append("\n    @media (max-width:800px){thead{display:none;}table,tbody,td,tr{display:block;width:100%;}td{box-sizing:border-box;padding:10px;}td:before{content:attr(data-label);display:block;font-weight:700;margin-bottom:6px;color:var(--muted);} .size{text-align:left;} .date{width:auto;} }");
+        sb.append("\n    /* Lightbox */");
+        sb.append("\n    .lightbox{display:none;position:fixed;inset:0;background:rgba(0,0,0,0.85);align-items:center;justify-content:center;padding:20px;z-index:9999;}");
+        sb.append("\n    .lightbox img{max-width:calc(100% - 40px);max-height:calc(100% - 40px);border-radius:8px;}");
+        sb.append("\n    .lb-close{position:fixed;top:16px;right:20px;color:#fff;font-size:22px;cursor:pointer;}");
+        sb.append("\n  </style>");
 
-        sb.append("</head>\n");
-        sb.append("<body>\n");
-        sb.append("<div class=\"container\">\n");
+        sb.append("\n</head>");
+        sb.append("\n<body>");
+        sb.append("\n<div class=\"container\">");
 
         // Header + search + breadcrumb
-        sb.append("<header>\n");
-        sb.append("  <div>\n");
-        sb.append("    <h1>Index of ").append(escapeHtml(getRelativePath(dir))).append("</h1>\n");
-        sb.append("    <div class=\"breadcrumb\">Mounted at: ").append(escapeHtml(baseDir.getAbsolutePath())).append("</div>\n");
-        sb.append("  </div>\n");
-        sb.append("  <div class=\"controls\">\n");
-        sb.append("    <input id=\"searchBox\" class=\"search\" placeholder=\"Filter Dateien (Name / Typ)...\">\n");
-        sb.append("  </div>\n");
-        sb.append("</header>\n");
+        sb.append("\n<header>");
+        sb.append("\n  <div>");
+        sb.append("\n    <h1>Index of ").append(escapeHtml(getRelativePath(dir))).append("</h1>");
+        sb.append("\n    <div class=\"breadcrumb\">Mounted at: ").append(escapeHtml(baseDir.getAbsolutePath())).append("</div>");
+        sb.append("\n  </div>");
+        sb.append("\n  <div class=\"controls\">");
+        sb.append("\n    <input id=\"searchBox\" class=\"search\" placeholder=\"Filter Dateien (Name / Typ)...\">");
+        sb.append("\n  </div>");
+        sb.append("\n</header>");
 
         // Table header
-        sb.append("<table id=\"fileTable\">\n");
-        sb.append("  <thead><tr>\n");
-        sb.append("    <th style=\"width:44px;padding-left:16px;\">&nbsp;</th>\n");
-        sb.append("    <th data-col=\"name\">Name</th>\n");
-        sb.append("    <th class=\"date\" data-col=\"date\">Last modified</th>\n");
-        sb.append("    <th class=\"size\" data-col=\"size\">Size</th>\n");
-        sb.append("    <th>Actions</th>\n");
-        sb.append("  </tr></thead>\n");
-        sb.append("  <tbody>\n");
+        sb.append("\n<table id=\"fileTable\">");
+        sb.append("\n  <thead><tr>");
+        sb.append("\n    <th style=\"width:44px;padding-left:16px;\">&nbsp;</th>");
+        sb.append("\n    <th data-col=\"name\">Name</th>");
+        sb.append("\n    <th class=\"date\" data-col=\"date\">Last modified</th>");
+        sb.append("\n    <th class=\"size\" data-col=\"size\">Size</th>");
+        sb.append("\n    <th>Actions</th>");
+        sb.append("\n  </tr></thead>");
+        sb.append("\n  <tbody>");
 
         // Parent directory
         if (!dir.getCanonicalFile().equals(baseDir.getCanonicalFile())) {
             File parent = dir.getParentFile();
             String parentRel = getEncodedRelativePath(contextPath, parent);
-            sb.append("    <tr data-name=\"..\" data-size=\"0\" data-date=\"0\">\n");
-            sb.append("      <td><div class=\"icon\">&#x1F4C1;</div></td>\n");
-            sb.append("      <td class=\"name\"><a href=\"").append(parentRel).append("/\" style=\"color:#cfe9ff;text-decoration:none;font-weight:700;\">Parent Directory</a></td>\n");
-            sb.append("      <td class=\"date\">&nbsp;</td>\n");
-            sb.append("      <td class=\"size\">&nbsp;</td>\n");
-            sb.append("      <td class=\"actions\">&nbsp;</td>\n");
-            sb.append("    </tr>\n");
+            sb.append("\n    <tr data-name=\"..\" data-size=\"0\" data-date=\"0\">");
+            sb.append("\n      <td><div class=\"icon\">&#x1F4C1;</div></td>");
+            sb.append("\n      <td class=\"name\"><a href=\"").append(parentRel).append("/\" style=\"color:#cfe9ff;text-decoration:none;font-weight:700;\">Parent Directory</a></td>");
+            sb.append("\n      <td class=\"date\">&nbsp;</td>");
+            sb.append("\n      <td class=\"size\">&nbsp;</td>");
+            sb.append("\n      <td class=\"actions\">&nbsp;</td>");
+            sb.append("\n    </tr>");
         }
 
         DecimalFormat dFormater = new DecimalFormat("###,##0.0");
@@ -333,19 +421,20 @@ public class FileHandler implements HttpHandler {
                 if (f.isHidden()) {
                     continue;
                 }
+
                 String displayName = f.getName();
                 if (displayName.length() > WebsiteServer.maximumFileNameLength) {
                     displayName = displayName.substring(0, WebsiteServer.maximumFileNameLength);
                 }
                 String relUrl = getEncodedRelativePath(contextPath, f);
                 if (f.isDirectory()) {
-                    sb.append("    <tr data-name=\"").append(escapeHtml(displayName.toLowerCase())).append("\" data-size=\"0\" data-date=\"").append(f.lastModified()).append("\">\n");
-                    sb.append("      <td><div class=\"icon\">&#128193;</div></td>\n");
-                    sb.append("      <td class=\"name\"><a href=\"").append(relUrl).append("/\" style=\"color:#cfe9ff;text-decoration:none;font-weight:700;\">" ).append(escapeHtml(displayName)).append("/</a></td>\n");
-                    sb.append("      <td class=\"date\">&nbsp;</td>\n");
-                    sb.append("      <td class=\"size\">&nbsp;</td>\n");
-                    sb.append("      <td class=\"actions\">&nbsp;</td>\n");
-                    sb.append("    </tr>\n");
+                    sb.append("\n    <tr data-name=\"").append(escapeHtml(displayName.toLowerCase())).append("\" data-size=\"0\" data-date=\"").append(f.lastModified()).append("\">");
+                    sb.append("\n      <td><div class=\"icon\">&#128193;</div></td>");
+                    sb.append("\n      <td class=\"name\"><a href=\"").append(relUrl).append("/\" style=\"color:#cfe9ff;text-decoration:none;font-weight:700;\">" ).append(escapeHtml(displayName)).append("/</a></td>");
+                    sb.append("\n      <td class=\"date\">&nbsp;</td>");
+                    sb.append("\n      <td class=\"size\">&nbsp;</td>");
+                    sb.append("\n      <td class=\"actions\">&nbsp;</td>");
+                    sb.append("\n    </tr>");
                 } else if (f.isFile()) {
                     String mimeType = Files.probeContentType(f.toPath());
                     if (mimeType == null) mimeType = "application/octet-stream";
@@ -363,107 +452,119 @@ public class FileHandler implements HttpHandler {
                         unit = "GiB";
                     }
 
-                    sb.append("    <tr data-name=\"").append(escapeHtml(displayName.toLowerCase())).append("\" data-size=\"").append(f.length()).append("\" data-date=\"").append(f.lastModified()).append("\">\n");
+                    sb.append("\n    <tr data-name=\"").append(escapeHtml(displayName.toLowerCase())).append("\" data-size=\"").append(f.length()).append("\" data-date=\"").append(f.lastModified()).append("\">");
 
-                    // icon or thumbnail
-                    sb.append("      <td>");
-                    if (previewMedia && mimeType.startsWith("image/")) {
-                        sb.append("<img class=\"thumb\" src=\"").append(relUrl).append("?raw=1\" alt=\"").append(escapeHtml(displayName)).append("\">\n");
-                    } else {
-                        String icon = "\u1F5CE"; // generic file icon fallback
-                        if (mimeType.startsWith("audio/")) icon = "\u1F3B5"; // musical note
-                        if (mimeType.startsWith("video/")) icon = "\u25B6"; // play
-                        if (mimeType.startsWith("text/")) icon = "\u270D"; // pencil
-                        if (mimeType.contains("pdf")) icon = "\uD83D\uDCC4"; // page
-                        sb.append("<div class=\"icon\">" ).append(icon).append("</div>\n");
+                    // icon or thumbnail (for images + videos)
+                    sb.append("\n      <td>");
+                    try {
+                        File thumbFile = null;
+                        if (previewMedia && mimeType.startsWith("video/")) {
+                            thumbFile = getOrCreateVideoThumbnail(f);
+                        }
+
+                        if (previewMedia && mimeType.startsWith("image/")) {
+                            sb.append("\n<img class=\"thumb\" src=\"").append(relUrl).append("?raw=1\" alt=\"").append(escapeHtml(displayName)).append("\">");
+                        } else if (thumbFile != null && thumbFile.exists()) {
+                            String thumbRel = "/.thumbs/" + thumbFile.getName();
+                            sb.append("\n<img class=\"thumb\" src=\"").append(thumbRel).append("?raw=1\" alt=\"").append(escapeHtml(displayName)).append("\">");
+                        } else {
+                        	String icon = "📂"; // generic file icon fallback
+                            if (mimeType.startsWith("audio/")) icon = "\u266B"; // musical note
+                            if (mimeType.startsWith("video/")) icon = "\u25B6"; // play
+                            if (mimeType.startsWith("text/")) icon = "\uD83D\uDCC4";
+                            if (mimeType.contains("pdf")) icon = "\uD83D\uDCC4";
+                            sb.append("\n<div class=\"icon\">" ).append(icon).append("</div>");
+                        }
+                    } catch (Exception e) {
+                        sb.append("\n<div class=\"icon\">&#128196;</div>");
                     }
-                    sb.append("</td>\n");
+                    sb.append("\n</td>");
 
                     // name (with preview link if enabled)
-                    sb.append("      <td class=\"name\">\n");
+                    sb.append("\n      <td class=\"name\">");
                     if (previewMedia && isPreviewable(mimeType)) {
-                        sb.append("        <div class=\"fname\"><div class=\"name\"><a href=\"").append(relUrl).append("?preview=1\">" ).append(escapeHtml(displayName)).append("</a></div></div>\n");
+                        sb.append("\n        <div class=\"fname\"><div class=\"name\"><a href=\"").append(relUrl).append("?preview=1\">" ).append(escapeHtml(displayName)).append("</a></div></div>");
                     } else {
-                        sb.append("        <div class=\"fname\"><div class=\"name\">" ).append(escapeHtml(displayName)).append("</div></div>\n");
+                        sb.append("\n        <div class=\"fname\"><div class=\"name\">" ).append(escapeHtml(displayName)).append("</div></div>");
                     }
-                    sb.append("      </td>\n");
+                    sb.append("\n      </td>");
 
-                    sb.append("      <td class=\"date\">" ).append(new Date(f.lastModified()).toString()).append("</td>\n");
-                    sb.append("      <td class=\"size\">" ).append(dFormater.format(size)).append(" ").append(unit).append("</td>\n");
+                    sb.append("\n      <td class=\"date\">" ).append(new Date(f.lastModified()).toString()).append("</td>");
+                    sb.append("\n      <td class=\"size\">" ).append(dFormater.format(size)).append(" ").append(unit).append("</td>");
 
                     // actions
-                    sb.append("      <td class=\"actions\">\n");
+                    sb.append("\n      <td class=\"actions\">");
                     if (previewMedia && isPreviewable(mimeType)) {
-                        sb.append("        <a class=\"btn-view\" href=\"").append(relUrl).append("?preview=1\">View</a>");
+                        sb.append("\n        <a class=\"btn-view\" href=\"").append(relUrl).append("?preview=1\">View</a>");
                     }
-                    sb.append("        <a class=\"btn-download\" href=\"").append(relUrl).append("?download=1\">Download</a>\n");
-                    sb.append("      </td>\n");
+                    sb.append("\n        <a class=\"btn-download\" href=\"").append(relUrl).append("?download=1\">Download</a>");
+                    sb.append("\n      </td>");
 
-                    sb.append("    </tr>\n");
+                    sb.append("\n    </tr>");
                 }
             }
         }
 
-        sb.append("  </tbody>\n");
-        sb.append("</table>\n");
+        sb.append("\n  </tbody>");
+        sb.append("\n</table>");
 
         // Lightbox container (for images)
-        sb.append("<div id=\"lightbox\" class=\"lightbox\" onclick=\"closeLB()\">\n");
-        sb.append("  <span class=\"lb-close\" onclick=\"closeLB()\">✕</span>\n");
-        sb.append("  <img id=\"lb-img\" src=\"\" alt=\"\">\n");
-        sb.append("</div>\n");
+        sb.append("\n<div id=\"lightbox\" class=\"lightbox\" onclick=\"closeLB()\">");
+        sb.append("\n  <span class=\"lb-close\" onclick=\"closeLB()\">✕</span>");
+        sb.append("\n  <img id=\"lb-img\" src=\"\" alt=\"\">");
+        sb.append("\n</div>");
 
         // JS: search + simple sort + lightbox
-        sb.append("<script>\n");
-        sb.append("(function(){\n");
-        sb.append("  const search=document.getElementById('searchBox');\n");
-        sb.append("  const tbody=document.querySelector('#fileTable tbody');\n");
-        sb.append("  search.addEventListener('input',function(){\n");
-        sb.append("    const q=this.value.trim().toLowerCase();\n");
-        sb.append("    Array.from(tbody.rows).forEach(r=>{\n");
-        sb.append("      const name=r.getAttribute('data-name')||'';\n");
-        sb.append("      if(!q || name.indexOf(q)!==-1) r.style.display=''; else r.style.display='none';\n");
-        sb.append("    });\n");
-        sb.append("  });\n");
+        sb.append("\n<script>");
+        sb.append("\n(function(){");
+        sb.append("\n  const search=document.getElementById('searchBox');");
+        sb.append("\n  const tbody=document.querySelector('#fileTable tbody');");
+        sb.append("\n  search.addEventListener('input',function(){");
+        sb.append("\n    const q=this.value.trim().toLowerCase();");
+        sb.append("\n    Array.from(tbody.rows).forEach(r=>{");
+        sb.append("\n      const name=r.getAttribute('data-name')||'';");
+        sb.append("\n      if(!q || name.indexOf(q)!==-1) r.style.display=''; else r.style.display='none';");
+        sb.append("\n    });");
+        sb.append("\n  });");
 
-        sb.append("  // sort by clicking headers (name,size,date)\n");
-        sb.append("  document.querySelectorAll('th[data-col]').forEach(th=>{\n");
-        sb.append("    th.addEventListener('click',()=>{\n");
-        sb.append("      const col=th.getAttribute('data-col');\n");
-        sb.append("      const rows=Array.from(tbody.rows).filter(r=>r.style.display !== 'none');\n");
-        sb.append("      const dir = th._dir = -(th._dir || -1); // toggle\n");
-        sb.append("      rows.sort((a,b)=>{\n");
-        sb.append("        const va = a.getAttribute('data-'+col)||'';\n");
-        sb.append("        const vb = b.getAttribute('data-'+col)||'';\n");
-        sb.append("        if(col==='name') return va.localeCompare(vb)*dir;\n");
-        sb.append("        if(col==='size' || col==='date') return (parseFloat(va)||0) - (parseFloat(vb)||0) > 0 ? dir : -dir;\n");
-        sb.append("        return 0;\n");
-        sb.append("      });\n");
-        sb.append("      rows.forEach(r=>tbody.appendChild(r));\n");
-        sb.append("    });\n");
-        sb.append("  });\n");
+        sb.append("\n  // sort by clicking headers (name,size,date)");
+        sb.append("\n  document.querySelectorAll('th[data-col]').forEach(th=>{");
+        sb.append("\n    th.addEventListener('click',()=>{");
+        sb.append("\n      const col=th.getAttribute('data-col');");
+        sb.append("\n      const rows=Array.from(tbody.rows).filter(r=>r.style.display !== 'none');");
+        sb.append("\n      const dir = th._dir = -(th._dir || -1); // toggle");
+        sb.append("\n      rows.sort((a,b)=>{");
+        sb.append("\n        const va = a.getAttribute('data-'+col)||'';");
+        sb.append("\n        const vb = b.getAttribute('data-'+col)||'';");
+        sb.append("\n        if(col==='name') return va.localeCompare(vb)*dir;");
+        sb.append("\n        if(col==='size' || col==='date') return (parseFloat(va)||0) - (parseFloat(vb)||0) > 0 ? dir : -dir;");
+        sb.append("\n        return 0;");
+        sb.append("\n      });");
+        sb.append("\n      rows.forEach(r=>tbody.appendChild(r));");
+        sb.append("\n    });");
+        sb.append("\n  });");
 
         if (previewMedia) {
-            sb.append("  // lightbox handling for image thumbs\n");
-            sb.append("  window.openLB = function(src){\n");
-            sb.append("    const lb=document.getElementById('lightbox');\n");
-            sb.append("    const img=document.getElementById('lb-img');\n");
-            sb.append("    img.src=src; lb.style.display='flex';\n");
-            sb.append("  }\n");
-            sb.append("  window.closeLB = function(){document.getElementById('lightbox').style.display='none';document.getElementById('lb-img').src='';}\n");
+            sb.append("\n  // lightbox handling for image thumbs");
+            sb.append("\n  window.openLB = function(src){");
+            sb.append("\n    const lb=document.getElementById('lightbox');");
+        sb.append("\n    const img=document.getElementById('lb-img');");
+            sb.append("\n    img.src=src; lb.style.display='flex';");
+            sb.append("\n  }");
+            sb.append("\n  window.closeLB = function(){document.getElementById('lightbox').style.display='none';document.getElementById('lb-img').src='';}");
 
             // attach click listeners on thumbs after DOM ready
-            sb.append("  document.addEventListener('DOMContentLoaded',function(){\n");
-            sb.append("    Array.from(document.querySelectorAll('.thumb')).forEach(t=>{t.style.cursor='zoom-in';t.addEventListener('click',function(e){e.preventDefault();openLB(this.src);});});\n");
-            sb.append("  });\n");
+            sb.append("\n  document.addEventListener('DOMContentLoaded',function(){");
+            sb.append("\n    Array.from(document.querySelectorAll('.thumb')).forEach(t=>{t.style.cursor='zoom-in';t.addEventListener('click',function(e){e.preventDefault();openLB(this.src);});});");
+            sb.append("\n  });");
         }
 
-        sb.append("})();\n");
-        sb.append("</script>\n");
+        sb.append("\n})();");
+        sb.append("\n</script>");
 
-        sb.append("</div>\n");
-        sb.append("</body>\n");
-        sb.append("</html>\n");
+        sb.append("\n</div>");
+        sb.append("\n</body>");
+        sb.append("\n</html>");
 
         return sb.toString();
     }
@@ -487,7 +588,7 @@ public class FileHandler implements HttpHandler {
         sb.append(contextPath); // z.B. "/dl"
         for (String s : segs) {
             if (s == null || s.isEmpty()) continue;
-            sb.append("/");
+            sb.append("\n/");
             sb.append(URLEncoder.encode(s, "UTF-8").replace("+", "%20"));
         }
         return sb.toString();
