@@ -465,7 +465,6 @@ public class FileHandler implements HttpHandler {
                             String thumbRel = "/.thumbs/" + thumbFile.getName();
                             sb.append("\n<img class=\"thumb\" src=\"").append(thumbRel).append("?raw=1\" alt=\"").append(escapeHtml(displayName)).append("\">");
                         } else {
-                        	System.out.println(mimeType + " " +  displayName);
                         	String icon = "📂"; // generic file icon fallback
                             if (mimeType.startsWith("audio/")) icon = "\u266B"; // musical note
                             if (mimeType.startsWith("video/")) icon = "\u25B6"; // play

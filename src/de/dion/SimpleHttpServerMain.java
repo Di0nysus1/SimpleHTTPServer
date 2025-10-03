@@ -15,11 +15,9 @@ import de.dion.httpserver.WebsiteServer;
 public class SimpleHttpServerMain {
 	
 	
-	//TODO: Bilder ordner testen mit thumbnails  und so
-	//TODO: .json, .config und so dateien testen
 	//TODO: hauptpage -> "/" neues design
 	//TODO: Klasse aufräumen
-	//TODO: ordner ganz oben listen
+	//TODO: ordner ganz oben listen  (einfach 2. forschleife  für  ordner
 	
 	private static WebsiteServer website;
 	public static ConfigHelper config;
