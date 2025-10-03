@@ -62,7 +62,7 @@ public class WebsiteServer {
     			
     			@Override
     			public void handle(HttpExchange exchange) throws IOException {
-    				System.out.println("Ping 1 " + exchange.getLocalAddress());
+    				System.out.println("Ping von " + exchange.getLocalAddress().getAddress().toString());
     				
     	            StringBuilder sb = new StringBuilder();
     	            sb.append("<!DOCTYPE HTML PUBLIC \"-//W3C//DTD HTML 3.2 Final//EN\">\n");
