@@ -20,6 +20,7 @@ public class WebsiteServer {
 	private int port;
 	private boolean previewMedia;
 	private String[] shareFolders = new String[0];
+	public static int maximumFileNameLength;
 	private HttpServer server;
 	
 	public WebsiteServer() {
@@ -28,6 +29,7 @@ public class WebsiteServer {
 	
 	private void init() {
 		port = SimpleHttpServerMain.config.getIntValue("Port");
+		maximumFileNameLength = SimpleHttpServerMain.config.getIntValue("Maximum-FileName-Length");
 		previewMedia = SimpleHttpServerMain.config.getBooleanValue("Preview-Media");
 		
 		String folders = SimpleHttpServerMain.config.getValue("Share-Folders").trim();
@@ -60,17 +62,17 @@ public class WebsiteServer {
     			
     			@Override
     			public void handle(HttpExchange exchange) throws IOException {
-    				System.out.println("Ping 1");
+    				System.out.println("Ping 1 " + exchange.getLocalAddress());
     				
     	            StringBuilder sb = new StringBuilder();
     	            sb.append("<!DOCTYPE HTML PUBLIC \"-//W3C//DTD HTML 3.2 Final//EN\">\n");
     	            sb.append("<html>\n");
     	            sb.append("<head>\n");
-    	            sb.append("<title>Test Seite</title>\n");
+    	            sb.append("<title>Simple HTTP Server</title>\n");
     	            sb.append("</head>\n");
     	            sb.append("<body style =\"background-color:#303030;\">\n");
     	            
-    	            sb.append("<h1 style=\"color:#ff9900\";>Willkommen auf der Java Test Seite</h1>\n");
+    	            sb.append("<h1 style=\"color:#ff9900\";>Willkommen auf dem Java Simple-HTTP-Server</h1>\n");
     	            sb.append("<h3 style=\"color:#00AAFF\";>Version " + version + "</h3>\n");
     	            sb.append("<br />");
     	            sb.append("<a href=\"/dl\" style=\"color:red;\">").append("<B>Downloads</B>").append("</a>");

@@ -42,6 +42,7 @@ public class SimpleHttpServerMain {
     private static void doConfigStuff() {
     	Config programConfig = new Config("Program Settings", new ConfigEntry[] {
     			new ConfigEntry("Port", 80, false, "Port for the Website"),
+    			new ConfigEntry("Maximum-FileName-Length", 80, false, "Maximum length for Filenames to not be cut of on the listing Page"),
     			new ConfigEntry("Preview-Media", true, false, "Should the Users be able to Play Videos and Stuff like that instead of only downloading?"),
     			new ConfigEntry("Share-Folders", "", true, "Path to External folders to be shared on the Website.\nSeparete with ;")
     	});

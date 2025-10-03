@@ -60,7 +60,7 @@ public class FileHandler implements HttpHandler {
      File requested = new File(baseDir, relativeDecoded).getCanonicalFile();
 
      // Schutz gegen Verzeichnis-Traversal: requested muss innerhalb baseDir liegen
-     if (!requested.getPath().startsWith(baseDir.getPath())) {
+     if (!requested.getPath().startsWith(baseDir.getPath()) || !requested.getCanonicalPath().startsWith(baseDir.getPath())) {
          send404(exchange);
          return;
      }
@@ -241,7 +241,7 @@ public class FileHandler implements HttpHandler {
          os.flush();
      } catch (IOException ex) {
          // connection closed by client oder ähnliches -> nur loggen
-         System.out.println("Error while sending file: " + ex.getMessage());
+         System.out.println(ex.getMessage());
      }
  }
 
@@ -263,7 +263,7 @@ public class FileHandler implements HttpHandler {
      if (!dir.getCanonicalFile().equals(baseDir.getCanonicalFile())) {
          File parent = dir.getParentFile();
          String parentRel = getEncodedRelativePath(contextPath, parent);
-         sb.append("<tr><td><a href=\"").append(parentRel).append("/\">Parent Directory</a></td><td>&nbsp;</td><td>&nbsp;</td><td>&nbsp;</td></tr>\n");
+         sb.append("<tr><td><a href=\"").append(parentRel).append("/\" style=\"color:0075FF;\">Parent Directory</a></td><td>&nbsp;</td><td>&nbsp;</td><td>&nbsp;</td></tr>\n");
      }
      
      DecimalFormat dFormater = new DecimalFormat("###,##0.0");
@@ -273,16 +273,31 @@ public class FileHandler implements HttpHandler {
      if (files != null) {
          Arrays.sort(files);
          for (File f : files) {
-             String name = f.getName();
+        	 if(f.isHidden()) {
+        		 continue;
+        	 }
+             String displayName = f.getName();;
+             if(displayName.length() > WebsiteServer.maximumFileNameLength) {
+            	 displayName = displayName.substring(0, WebsiteServer.maximumFileNameLength);
+             }
              String relUrl = getEncodedRelativePath(contextPath, f);
              if (f.isDirectory()) {
-                 sb.append("<tr><td>").append("<a href=\"").append(relUrl).append("/\">").append(escapeHtml(name)).append("/</a></td>");
+                 sb.append("<tr><td>").append("<a href=\"").append(relUrl).append("/\" style=\"color:0075FF;\">").append(escapeHtml(displayName)).append("/</a></td>");
                  sb.append("<td>").append("&nbsp;").append("</td><td>").append("&nbsp;</td><td>").append("&nbsp;</td></tr>\n");
              } else if (f.isFile()) {
                  String mimeType = Files.probeContentType(f.toPath());
                  if (mimeType == null) mimeType = "application/octet-stream";
                  sb.append("<tr>");
-                 sb.append("<td>").append(escapeHtml(name)).append("</td>");
+                 
+                 sb.append("<td>");
+                 if (previewMedia && isPreviewable(mimeType))
+                	 sb.append("<a href=\"").append(relUrl).append("?preview=1\" style=\"color:#ffffff;\">");
+                 sb.append(escapeHtml(displayName));
+                 if (previewMedia && isPreviewable(mimeType))
+                	 sb.append("</a>");
+                 sb.append("</td>");
+                 
+                 
                  sb.append("<td>").append(new Date(f.lastModified()).toString()).append("</td>");
                  
                  String unit = "KiB";
@@ -301,10 +316,10 @@ public class FileHandler implements HttpHandler {
                  sb.append("<td>").append(dFormater.format(size) + " " + unit).append("</td>");
                  
                  sb.append("<td>");
-                 sb.append("<a href=\"").append(relUrl).append("?download=1\" style=\"color:#00aaff;margin-right:10px;\">Download</a>");
                  if (previewMedia && isPreviewable(mimeType)) {
-                     sb.append("<a href=\"").append(relUrl).append("?preview=1\" style=\"color:#00ff88;\">View</a>");
+                     sb.append("<a href=\"").append(relUrl).append("?preview=1\" style=\"color:#00ff88;\">View</a> ");
                  }
+                 sb.append("<a href=\"").append(relUrl).append("?download=1\" style=\"color:#00aaff;margin-right:10px;\">Download</a>");
                  sb.append("</td>");
                  sb.append("</tr>\n");
              }
