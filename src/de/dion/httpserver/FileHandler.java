@@ -10,9 +10,12 @@ import java.net.URI;
 import java.net.URLDecoder;
 import java.net.URLEncoder;
 import java.nio.file.Files;
+import java.text.DecimalFormat;
+import java.text.DecimalFormatSymbols;
 import java.util.Arrays;
 import java.util.Date;
 import java.util.HashMap;
+import java.util.Locale;
 import java.util.Map;
 
 import com.sun.net.httpserver.HttpExchange;
@@ -262,7 +265,10 @@ public class FileHandler implements HttpHandler {
          String parentRel = getEncodedRelativePath(contextPath, parent);
          sb.append("<tr><td><a href=\"").append(parentRel).append("/\">Parent Directory</a></td><td>&nbsp;</td><td>&nbsp;</td><td>&nbsp;</td></tr>\n");
      }
-
+     
+     DecimalFormat dFormater = new DecimalFormat("###,##0.0");
+     dFormater.setDecimalFormatSymbols(DecimalFormatSymbols.getInstance(Locale.GERMAN));
+     
      File[] files = dir.listFiles();
      if (files != null) {
          Arrays.sort(files);
@@ -278,7 +284,22 @@ public class FileHandler implements HttpHandler {
                  sb.append("<tr>");
                  sb.append("<td>").append(escapeHtml(name)).append("</td>");
                  sb.append("<td>").append(new Date(f.lastModified()).toString()).append("</td>");
-                 sb.append("<td>").append(f.length()).append("</td>");
+                 
+                 String unit = "KiB";
+                 double size = f.length();
+                 size = size / 1024;
+                 
+                 if(size >= 1024) {
+                	 size = size / 1024;
+                	 unit = "MiB";
+                 }
+                 
+                 if(size >= 1024) {
+                	 size = size / 1024;
+                	 unit = "GiB";
+                 }
+                 sb.append("<td>").append(dFormater.format(size) + " " + unit).append("</td>");
+                 
                  sb.append("<td>");
                  sb.append("<a href=\"").append(relUrl).append("?download=1\" style=\"color:#00aaff;margin-right:10px;\">Download</a>");
                  if (previewMedia && isPreviewable(mimeType)) {

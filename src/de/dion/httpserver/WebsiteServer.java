@@ -73,7 +73,13 @@ public class WebsiteServer {
     	            sb.append("<h1 style=\"color:#ff9900\";>Willkommen auf der Java Test Seite</h1>\n");
     	            sb.append("<h3 style=\"color:#00AAFF\";>Version " + version + "</h3>\n");
     	            sb.append("<br />");
-    	            sb.append("<a href=\"./dl\" style=\"color:red;\">").append("<B>Downloads</B>").append("</a>");
+    	            sb.append("<a href=\"/dl\" style=\"color:red;\">").append("<B>Downloads</B>").append("</a>");
+    	            
+    	            sb.append("<br />");
+    	            for(String path: shareFolders) {
+    	            	sb.append("<br />");
+    	            	sb.append("<a href=\"/" + path + "\" style=\"color:red;\">").append("<B>" + path + "</B>").append("</a>");
+    	            }
     	            
     	            sb.append("</body>\n");
     	            sb.append("</html>\n");
