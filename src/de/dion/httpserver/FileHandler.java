@@ -423,9 +423,6 @@ public class FileHandler implements HttpHandler {
                 }
 
                 String displayName = f.getName();
-                if (displayName.length() > WebsiteServer.maximumFileNameLength) {
-                    displayName = displayName.substring(0, WebsiteServer.maximumFileNameLength);
-                }
                 String relUrl = getEncodedRelativePath(contextPath, f);
                 if (f.isDirectory()) {
                     sb.append("\n    <tr data-name=\"").append(escapeHtml(displayName.toLowerCase())).append("\" data-size=\"0\" data-date=\"").append(f.lastModified()).append("\">");

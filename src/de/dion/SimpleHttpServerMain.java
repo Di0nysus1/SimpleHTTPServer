@@ -17,8 +17,9 @@ public class SimpleHttpServerMain {
 	
 	//TODO: Bilder ordner testen mit thumbnails  und so
 	//TODO: .json, .config und so dateien testen
-	//TODO: maximum filename length  unnötig wegen neuem design?
 	//TODO: hauptpage -> "/" neues design
+	//TODO: Klasse aufräumen
+	//TODO: ordner ganz oben listen
 	
 	private static WebsiteServer website;
 	public static ConfigHelper config;
@@ -48,7 +49,6 @@ public class SimpleHttpServerMain {
     private static void doConfigStuff() {
     	Config programConfig = new Config("Program Settings", new ConfigEntry[] {
     			new ConfigEntry("Port", 80, false, "Port for the Website"),
-    			new ConfigEntry("Maximum-FileName-Length", 80, false, "Maximum length for Filenames to not be cut of on the listing Page"),
     			new ConfigEntry("Download-Buffersize", 32.896, false, "Buffersize for transfering Data"),
     			new ConfigEntry("Preview-Media", true, false, "Should the Users be able to Play Videos and Stuff like that instead of only downloading?"),
     			new ConfigEntry("Generate-VideoThumbnails", false, false, "Should Thumbnails be created for Videos on the listing Page?\nffmpeg required!"),

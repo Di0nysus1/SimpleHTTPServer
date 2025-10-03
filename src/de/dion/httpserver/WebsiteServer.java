@@ -21,7 +21,6 @@ public class WebsiteServer {
 	private boolean previewMedia;
 	private String[] shareFolders = new String[0];
 	private boolean generateVideoThumbnails;
-	public static int maximumFileNameLength;
 	private HttpServer server;
 	
 	public WebsiteServer() {
@@ -31,7 +30,6 @@ public class WebsiteServer {
 	private void init() {
 		port = SimpleHttpServerMain.config.getIntValue("Port");
 		FileHandler.BUFFER_SIZE = SimpleHttpServerMain.config.getIntValue("Download-Buffersize");
-		maximumFileNameLength = SimpleHttpServerMain.config.getIntValue("Maximum-FileName-Length");
 		previewMedia = SimpleHttpServerMain.config.getBooleanValue("Preview-Media");
 		generateVideoThumbnails = SimpleHttpServerMain.config.getBooleanValue("Generate-VideoThumbnails");
 		
