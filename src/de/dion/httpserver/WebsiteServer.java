@@ -116,7 +116,7 @@ public class WebsiteServer {
     }
 	
 	private void addFileHandlers() throws IOException {
-		server.createContext("/dl", new FileHandler("dl", previewMedia, false));
+		server.createContext("/dl", new FileHandler("dl", previewMedia, generateVideoThumbnails));
 		server.createContext("/.thumbs", new FileHandler(".thumbs", false, false));
 		
 		for(String path: shareFolders) {

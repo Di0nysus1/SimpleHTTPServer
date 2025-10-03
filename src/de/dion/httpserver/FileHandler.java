@@ -465,10 +465,12 @@ public class FileHandler implements HttpHandler {
                             String thumbRel = "/.thumbs/" + thumbFile.getName();
                             sb.append("\n<img class=\"thumb\" src=\"").append(thumbRel).append("?raw=1\" alt=\"").append(escapeHtml(displayName)).append("\">");
                         } else {
+                        	System.out.println(mimeType + " " +  displayName);
                         	String icon = "📂"; // generic file icon fallback
                             if (mimeType.startsWith("audio/")) icon = "\u266B"; // musical note
                             if (mimeType.startsWith("video/")) icon = "\u25B6"; // play
                             if (mimeType.startsWith("text/")) icon = "\uD83D\uDCC4";
+                            if (mimeType.startsWith("application")) icon = "\u2699";
                             if (mimeType.contains("pdf")) icon = "\uD83D\uDCC4";
                             sb.append("\n<div class=\"icon\">" ).append(icon).append("</div>");
                         }
