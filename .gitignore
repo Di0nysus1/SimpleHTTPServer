@@ -1,3 +1,4 @@
 # Project exclude paths
 /dl/*
+/bin
 config.conf
