@@ -1,14 +1,22 @@
 package de.dion.httpserver.handlers;
 
-import com.sun.net.httpserver.HttpExchange;
-import com.sun.net.httpserver.HttpHandler;
-
-import java.io.*;
+import java.io.ByteArrayOutputStream;
+import java.io.File;
+import java.io.FileOutputStream;
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.OutputStream;
 import java.net.InetAddress;
 import java.net.UnknownHostException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Paths;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+
+import com.sun.net.httpserver.HttpExchange;
+import com.sun.net.httpserver.HttpHandler;
 
 /**
  * UploadHandler
@@ -413,11 +421,6 @@ public class UploadHandler implements HttpHandler {
             return i;
         }
         return -1;
-    }
-
-    // convenience: search for small pattern
-    private static int indexOf(byte[] data, byte[] pattern, int from, int to, boolean unused) {
-        return indexOf(data, pattern, from, to);
     }
 
     // parse headers block into map (headerName -> headerValue)
