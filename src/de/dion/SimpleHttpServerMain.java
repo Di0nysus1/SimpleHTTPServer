@@ -10,20 +10,19 @@ import de.dion.config.Config;
 import de.dion.config.ConfigEntry;
 import de.dion.config.ConfigHelper;
 import de.dion.config.exceptions.WrongFileTypeException;
-import de.dion.httpserver.WebsiteServer;
+import de.dion.httpserver.WebServer;
 
 public class SimpleHttpServerMain {
 	
 	
-	//TODO: hauptpage -> "/" neues design
-	//TODO: Klasse aufräumen
 	//TODO: ordner ganz oben listen  (einfach 2. forschleife  für  ordner
+	//TODO: multithreading
 	
-	private static WebsiteServer website;
+	private static WebServer website;
 	public static ConfigHelper config;
 
     public static void main(String[] args) {
-    	System.out.println("SimpleHttpServer Version: " + WebsiteServer.version + " by Di0nysus1");
+    	System.out.println("SimpleHttpServer Version: " + WebServer.version + " by Di0nysus1");
     	
     	createDLDir();
     	doConfigStuff();
@@ -40,17 +39,18 @@ public class SimpleHttpServerMain {
     		System.exit(0);
     	}
     	
-    	website = new WebsiteServer();
+    	website = new WebServer();
     	website.start();
     }
     
     private static void doConfigStuff() {
     	Config programConfig = new Config("Program Settings", new ConfigEntry[] {
-    			new ConfigEntry("Port", 80, false, "Port for the Website"),
-    			new ConfigEntry("Download-Buffersize", 32.896, false, "Buffersize for transfering Data"),
+    			new ConfigEntry("Port", 80, false, "HTTP Port for the Website"),
+    			new ConfigEntry("Download-Buffersize", 32896, false, "Buffersize for transfering Data"),
     			new ConfigEntry("Preview-Media", true, false, "Should the Users be able to Play Videos and Stuff like that instead of only downloading?"),
-    			new ConfigEntry("Generate-VideoThumbnails", false, false, "Should Thumbnails be created for Videos on the listing Page?\nffmpeg required!"),
-    			new ConfigEntry("Share-Folders", "", true, "Path to External folders to be shared on the Website.\nSeparete with ;")
+    			new ConfigEntry("Show-VideoThumbnails", false, false, "Should Thumbnails be created for Videos on the listing Page?\nffmpeg required!"),
+    			new ConfigEntry("Thumbnail-Scale", 640, false, "Default Resolution for the Thumbnails. Example: 640 = 640x360p\nHigher Resolutions take longer to generate."),
+    			new ConfigEntry("Share-Folders", "", true, "Path to External folders to be shared on the Website. Subfolders are also shared!\nSeparete with ;")
     	});
     	
     	try {

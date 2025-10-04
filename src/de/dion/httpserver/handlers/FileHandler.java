@@ -1,4 +1,4 @@
-package de.dion.httpserver;
+package de.dion.httpserver.handlers;
 
 
 import java.io.File;
@@ -24,11 +24,14 @@ import java.util.concurrent.TimeUnit;
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpHandler;
 
+import de.dion.httpserver.ThumbnailManager;
+
 public class FileHandler implements HttpHandler {
+	
     private final File baseDir;
     private final boolean previewMedia;
-    private final File thumbDir;
-    private final boolean generateVideoThumbnails;
+    private final boolean showVideoThumbnails;
+    private static ThumbnailManager thumpnailManager = null;
     public static int BUFFER_SIZE;
 
     /**
@@ -36,17 +39,17 @@ public class FileHandler implements HttpHandler {
      * @param previewMedia Wenn true: UI zeigt "View" + ?preview=1 wird ausgewertet. Wenn false: keine Preview-Funktionalität.
      * @throws IOException wenn basePath nicht existiert oder nicht erreichbar ist
      */
-    public FileHandler(String basePath, boolean previewMedia, boolean generateVideoThumbnails) throws IOException {
+    public FileHandler(String basePath, boolean previewMedia, boolean showVideoThumbnails, int thumbnailScale) throws IOException {
         File bd = new File(basePath);
         if (!bd.exists() || !bd.isDirectory()) {
             throw new IOException("Base path does not exist or is not a directory: " + basePath);
         }
         this.baseDir = bd.getCanonicalFile();
         this.previewMedia = previewMedia;
-        this.generateVideoThumbnails = generateVideoThumbnails;
-        this.thumbDir = new File(".thumbs");
-        if (!thumbDir.exists()) {
-            thumbDir.mkdirs();
+        this.showVideoThumbnails = showVideoThumbnails;
+        
+        if(thumpnailManager == null) {
+        	thumpnailManager = new ThumbnailManager(thumbnailScale);
         }
     }
 
@@ -126,8 +129,6 @@ public class FileHandler implements HttpHandler {
         }
     }
 
-    // -------------------- Hilfsfunktionen --------------------
-
     private void send404(HttpExchange exchange) throws IOException {
         String response = "404 Not Found";
         exchange.sendResponseHeaders(404, response.length());
@@ -190,81 +191,6 @@ public class FileHandler implements HttpHandler {
         return sb.toString();
     }
 
-    /**
-     * Versucht, ein Thumbnail für ein Video zu erzeugen (ffmpeg wird dafür verwendet). Die Thumbs werden
-     * im Unterordner ".thumbs" innerhalb des Base-Verzeichnisses als <sha1>.jpg gespeichert.
-     * Wenn ffmpeg nicht verfügbar ist oder die Generierung fehlschlägt, wird null zurückgegeben und
-     * das Listing zeigt stattdessen das Icon an.
-     */
-    private File getOrCreateVideoThumbnail(File video) throws IOException {
-        try {
-            String rel = getRelativePath(video);
-            if (rel.startsWith("/")) rel = rel.substring(1);
-            String name = sha1Hex(rel) + ".jpg";
-            File out = new File(thumbDir, name);
-            if (out.exists() && out.length() > 0) return out;
-            out.getParentFile().mkdirs();
-            boolean ok = generateThumbnailWithFfmpeg(video, out);
-            if (ok) return out;
-        } catch (Exception e) {
-            System.err.println("Thumbnail generation failed: " + e.getMessage());
-        }
-        return null;
-    }
-
-    private String sha1Hex(String s) {
-        try {
-            MessageDigest md = MessageDigest.getInstance("SHA-1");
-            byte[] d = md.digest(s.getBytes("UTF-8"));
-            StringBuilder sb = new StringBuilder();
-            for (byte b : d) sb.append(String.format("%02x", b & 0xff));
-            return sb.toString();
-        } catch (Exception e) {
-            return Integer.toHexString(s.hashCode());
-        }
-    }
-
-    private boolean generateThumbnailWithFfmpeg(File video, File thumb) throws IOException, InterruptedException {
-    	if(!generateVideoThumbnails) {
-    		return false;
-    	}
-    	System.out.println("Video Thumbnail für \"" + video.getName() + "\" wird generiert...");
-        // Kommando: ffmpeg -y -ss 00:00:01 -i <video> -frames:v 1 -q:v 2 -vf scale=320:-1 <thumb>
-        ProcessBuilder pb = new ProcessBuilder(
-                "ffmpeg",
-                "-y",
-                "-ss",
-                "00:00:10",
-                "-i",
-                video.getAbsolutePath(),
-                "-frames:v",
-                "1",
-                "-q:v",
-                "2",
-                "-vf",
-                "scale=320:-1",
-                thumb.getAbsolutePath()
-        );
-        pb.redirectErrorStream(true);
-        Process p = pb.start();
-
-        // read output to avoid blocking
-        try (InputStream is = p.getInputStream()) {
-            byte[] buf = new byte[1024];
-            while (is.read(buf) != -1) {
-                // discard, but ensures stream buffer doesn't fill
-            }
-        } catch (IOException ignore) {
-        }
-
-        boolean finished = p.waitFor(8, TimeUnit.SECONDS);
-        if (!finished) {
-            p.destroy();
-            return false;
-        }
-        int exit = p.exitValue();
-        return exit == 0 && thumb.exists() && thumb.length() > 0;
-    }
 
     private void serveFileWithRange(HttpExchange exchange, File file, String mimeType, boolean inline) throws IOException {
         long fileLength = file.length();
@@ -324,6 +250,7 @@ public class FileHandler implements HttpHandler {
                 os.write(buffer, 0, read);
                 toWrite -= read;
             }
+            System.out.println(2);
             os.flush();
         } catch (IOException ex) {
             // connection closed by client oder ähnliches -> nur loggen
@@ -417,11 +344,12 @@ public class FileHandler implements HttpHandler {
         File[] files = dir.listFiles();
         if (files != null) {
             Arrays.sort(files);
+            
             for (File f : files) {
                 if (f.isHidden()) {
                     continue;
                 }
-
+                
                 String displayName = f.getName();
                 String relUrl = getEncodedRelativePath(contextPath, f);
                 if (f.isDirectory()) {
@@ -432,7 +360,17 @@ public class FileHandler implements HttpHandler {
                     sb.append("\n      <td class=\"size\">&nbsp;</td>");
                     sb.append("\n      <td class=\"actions\">&nbsp;</td>");
                     sb.append("\n    </tr>");
-                } else if (f.isFile()) {
+                }
+            }
+            
+            for (File f : files) {
+                if (f.isHidden()) {
+                    continue;
+                }
+
+                String displayName = f.getName();
+                String relUrl = getEncodedRelativePath(contextPath, f);
+                if (f.isFile()) {
                     String mimeType = Files.probeContentType(f.toPath());
                     if (mimeType == null) mimeType = "application/octet-stream";
 
@@ -455,8 +393,8 @@ public class FileHandler implements HttpHandler {
                     sb.append("\n      <td>");
                     try {
                         File thumbFile = null;
-                        if (previewMedia && mimeType.startsWith("video/")) {
-                            thumbFile = getOrCreateVideoThumbnail(f);
+                        if (previewMedia && mimeType.startsWith("video/") && showVideoThumbnails) {
+                            thumbFile = thumpnailManager.getOrCreateVideoThumbnail(f);
                         }
 
                         if (previewMedia && mimeType.startsWith("image/")) {
