@@ -76,6 +76,11 @@ public class UploadHandler implements HttpHandler {
         sb.append("    .btn-primary{background:linear-gradient(180deg,#07243a,#053049);color:var(--link)}\n");
         sb.append("    .btn-secondary{background:linear-gradient(180deg,#07220f,#05210b);color:var(--ok);margin-left:8px}\n");
         sb.append("    .note{color:var(--muted);font-size:0.9rem}\n");
+        sb.append("    .progress-wrap{background:#06101a;border-radius:8px;padding:10px;margin-top:10px}\n");
+        sb.append("    .progress{width:100%;height:16px;background:#05121a;border-radius:8px;overflow:hidden;border:1px solid rgba(255,255,255,0.04)}\n");
+        sb.append("    .progress > .bar{height:100%;width:0%;background:linear-gradient(90deg,#ff9900,#00aaff)}\n");
+        sb.append("    .progress-info{display:flex;justify-content:space-between;font-size:0.85rem;color:var(--muted);margin-top:6px}\n");
+        sb.append("    .result{margin-top:12px}\n");
         sb.append("    @media (max-width:600px){header{flex-direction:column;align-items:flex-start}}\n");
         sb.append("  </style>\n");
         sb.append("</head>\n");
