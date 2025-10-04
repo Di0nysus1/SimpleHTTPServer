@@ -14,6 +14,9 @@ import de.dion.httpserver.WebServer;
 
 public class SimpleHttpServerMain {
 	
+	//TODO: download all button
+	//TODO: alle todos absuchen
+	
 	private static WebServer website;
 	public static ConfigHelper config;
 
@@ -46,7 +49,9 @@ public class SimpleHttpServerMain {
     			new ConfigEntry("Preview-Media", true, false, "Should the Users be able to Play Videos and Stuff like that instead of only downloading?"),
     			new ConfigEntry("Show-VideoThumbnails", false, false, "Should Thumbnails be created for Videos on the listing Page?\nffmpeg required!"),
     			new ConfigEntry("Thumbnail-Scale", 640, false, "Default Resolution for the Thumbnails. Example: 640 = 640x360p\nHigher Resolutions take longer to generate."),
-    			new ConfigEntry("Share-Folders", "", true, "Path to External folders to be shared on the Website. Subfolders are also shared!\nSeparete with ;")
+    			new ConfigEntry("Share-Folders", "", true, "Path to External folders to be shared on the Website. Subfolders are also shared!\nSeparete with ;"),
+    			new ConfigEntry("Allow-Uploads", true, false, "Adds the Function to Upload files to the Server\nIf you Upload the same Filename again, it gets overwritten"),
+    			new ConfigEntry("Upload-Dir", "Uploads", true, "If you Set this to \"DL\" the user can upload Files and sees them at the Downloads Page")
     	});
     	
     	try {
@@ -60,18 +65,10 @@ public class SimpleHttpServerMain {
     }
     
     private static void createDLDir() {
-    	File dlDIR = new File("dl");
-    	if(!dlDIR.exists() || !dlDIR.isDirectory()) {
-    		try {
-				dlDIR.createNewFile();
-			} catch (IOException e) {
-				e.printStackTrace();
-				System.err.println("\"dl\" Verzeichnis konnte nicht erstellt werden!");
-				System.exit(1);
-			}
-    	}
+    	File dlDIR = new File("DL");
+    	dlDIR.mkdirs();
     	if(dlDIR.exists() && dlDIR.isDirectory()) {
-    		System.out.println("Verzeichnis \"dl\" gefunden.");
+    		System.out.println("Verzeichnis \"DL\" gefunden.");
     	}
     }
 }

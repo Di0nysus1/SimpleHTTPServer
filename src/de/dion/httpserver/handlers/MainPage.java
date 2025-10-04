@@ -9,6 +9,7 @@ import java.nio.charset.StandardCharsets;
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpHandler;
 
+import de.dion.SimpleHttpServerMain;
 import de.dion.httpserver.WebServer;
 
 public class MainPage implements HttpHandler {
@@ -17,12 +18,16 @@ public class MainPage implements HttpHandler {
 	private boolean previewMedia;
 	private String[] shareFolders = new String[0];
 	private boolean showVideoThumbnails;
+	private boolean allowUploads;
+	private String uploadDir;
 
-	public MainPage(int port, boolean previewMedia, boolean showVideoThumbnails, String[] shareFolders) {
+	public MainPage(int port, boolean previewMedia, boolean showVideoThumbnails, String[] shareFolders, boolean allowUploads, String uploadDir) {
 		this.port = port;
 		this.previewMedia = previewMedia;
 		this.showVideoThumbnails = showVideoThumbnails;
 		this.shareFolders = shareFolders;
+		this.allowUploads = allowUploads;
+		this.uploadDir = uploadDir;
 	}
 
 	@Override
@@ -79,6 +84,17 @@ public class MainPage implements HttpHandler {
         sb.append("        </div>\n");
         sb.append("      </article>\n");
         
+        if(allowUploads) {
+        	// Uploads card (keeps existing link to /upload)
+        	sb.append("      <article class=\"card\">\n");
+        	sb.append("        <h3>Upload</h3>\n");
+        	sb.append("        <p>Lade dateien hoch — Die Dateien Werden im Verzeichnis \"" + uploadDir + "\" gespeichert.</p>\n            ");
+        	sb.append("        <div class=\"actions\">\n");
+        	sb.append("          <a class=\"btn btn-primary\" href=\"/upload\">Öffnen</a>\n");
+        	sb.append("        </div>\n");
+        	sb.append("      </article>\n");
+        }
+        
         // External share folders (preserve exact links/paths as before)
         for(String path: shareFolders) {
         	sb.append("      <article class=\"card\">\n");
@@ -105,6 +121,11 @@ public class MainPage implements HttpHandler {
         } else {
         	sb.append("      <div style=\"margin-top:6px;color:var(--muted)\">Video-Thumbnail-Generierung ist <strong>deaktiviert</strong>.</div>\n");
         }
+        if (allowUploads) {
+            sb.append("      <div style=\"margin-top:6px;color:var(--muted)\">Uploads sind <strong>aktiviert</strong> — Dateien können über <a href=\"/upload\" style=\"color:var(--link)\">/upload</a> hochgeladen werden.</div>\n");
+        } else {
+            sb.append("      <div style=\"margin-top:6px;color:var(--muted)\">Uploads sind <strong>deaktiviert</strong>.</div>\n");
+        }
         
         // show Config-Öffnen button only if request comes from local machine (loopback)
         if (OpenConfig.isLocalRequest(exchange)) {
@@ -112,6 +133,7 @@ public class MainPage implements HttpHandler {
         }
         
         sb.append("    </footer>\n");
+
         sb.append("  </div>\n");
         sb.append("</body>\n");
         sb.append("</html>\n");

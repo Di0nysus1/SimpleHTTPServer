@@ -1,6 +1,6 @@
 ### SimpleHTTPServer
 
-This project is a lightweight HTTP server implemented in Java 8 using Eclipse IDE. It allows users to easily share and transfer files over a Local Area Network (LAN) between computers.
+This project is a "lightweight" HTTP server implemented in Java 8 using Eclipse IDE. It allows users to easily share and transfer files over a Local Area Network (LAN) between computers.
 
 #### Key Features:
 - **File Serving**: Serves files from a local directory via HTTP requests.

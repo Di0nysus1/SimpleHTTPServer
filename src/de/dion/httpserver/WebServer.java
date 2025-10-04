@@ -14,14 +14,17 @@ import de.dion.SimpleHttpServerMain;
 import de.dion.httpserver.handlers.FileHandler;
 import de.dion.httpserver.handlers.MainPage;
 import de.dion.httpserver.handlers.OpenConfig;
+import de.dion.httpserver.handlers.UploadHandler;
 
 public class WebServer {
 
-	public static final String version = "1.2";
+	public static final String version = "1.3";
 	private int port;
 	private boolean previewMedia;
 	private String[] shareFolders = new String[0];
 	private boolean showVideoThumbnails;
+	private boolean allowUploads;
+	private String uploadDir;
 	private HttpServer server;
 	
 	public WebServer() {
@@ -34,6 +37,8 @@ public class WebServer {
 		FileHandler.BUFFER_SIZE *= 1024; //umrechnung KiB in Bytes
 		previewMedia = SimpleHttpServerMain.config.getBooleanValue("Preview-Media");
 		showVideoThumbnails = SimpleHttpServerMain.config.getBooleanValue("Show-VideoThumbnails");
+		allowUploads = SimpleHttpServerMain.config.getBooleanValue("Allow-Uploads");
+		uploadDir = SimpleHttpServerMain.config.getValue("Upload-Dir");
 		
 		String folders = SimpleHttpServerMain.config.getValue("Share-Folders").trim();
 		if(folders.endsWith(";")) {
@@ -61,10 +66,13 @@ public class WebServer {
     		//So viele Threads für Multuthreading wie Cpu Threads erzeugen
     		server.setExecutor(Executors.newFixedThreadPool(Runtime.getRuntime().availableProcessors()));
     		
+    		//Alle Sub-Pages erstellen
     		addFileHandlers();
-    		//Main page
     		server.createContext("/open-config", new OpenConfig());
-    		server.createContext("/", new MainPage(port, previewMedia, showVideoThumbnails, shareFolders));
+    		server.createContext("/", new MainPage(port, previewMedia, showVideoThumbnails, shareFolders, allowUploads, uploadDir));
+    		if(allowUploads) {
+    			server.createContext("/upload", new UploadHandler(uploadDir));
+    		}
     		
     		try {
     			System.out.println("");
