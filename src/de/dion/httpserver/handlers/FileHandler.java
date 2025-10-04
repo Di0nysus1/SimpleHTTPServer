@@ -7,10 +7,15 @@ import java.io.InputStream;
 import java.io.OutputStream;
 import java.io.RandomAccessFile;
 import java.io.UnsupportedEncodingException;
+import java.net.SocketException;
 import java.net.URI;
 import java.net.URLDecoder;
 import java.net.URLEncoder;
+import java.nio.channels.Channels;
+import java.nio.channels.FileChannel;
+import java.nio.channels.WritableByteChannel;
 import java.nio.file.Files;
+import java.nio.file.StandardOpenOption;
 import java.security.MessageDigest;
 import java.text.DecimalFormat;
 import java.text.DecimalFormatSymbols;
@@ -32,7 +37,7 @@ public class FileHandler implements HttpHandler {
     private final boolean previewMedia;
     private final boolean showVideoThumbnails;
     private static ThumbnailManager thumpnailManager = null;
-    public static int BUFFER_SIZE;
+    public static long BUFFER_SIZE;
 
     /**
      * @param basePath     Pfad zum Verzeichnis, das serviert werden soll (kann absolut sein, z.B. "Z:\admin1\Music")
@@ -202,12 +207,8 @@ public class FileHandler implements HttpHandler {
         if (range != null && range.startsWith("bytes=")) {
             String[] parts = range.substring("bytes=".length()).split("-", 2);
             try {
-                if (parts.length > 0 && !parts[0].isEmpty()) {
-                    start = Long.parseLong(parts[0].trim());
-                }
-                if (parts.length > 1 && !parts[1].isEmpty()) {
-                    end = Long.parseLong(parts[1].trim());
-                }
+                if (parts.length > 0 && !parts[0].isEmpty()) start = Long.parseLong(parts[0].trim());
+                if (parts.length > 1 && !parts[1].isEmpty()) end = Long.parseLong(parts[1].trim());
                 if (start < 0) start = 0;
                 if (end > fileLength - 1) end = fileLength - 1;
                 if (start > end) {
@@ -237,24 +238,39 @@ public class FileHandler implements HttpHandler {
             exchange.getResponseHeaders().set("Content-Range", "bytes " + start + "-" + end + "/" + fileLength);
             exchange.sendResponseHeaders(206, contentLength);
         } else {
-            exchange.sendResponseHeaders(200, fileLength);
+            exchange.sendResponseHeaders(200, contentLength);
         }
 
-        try (OutputStream os = exchange.getResponseBody();
-             RandomAccessFile raf = new RandomAccessFile(file, "r")) {
-            raf.seek(start);
-            byte[] buffer = new byte[BUFFER_SIZE];
-            long toWrite = contentLength;
-            int read;
-            while (toWrite > 0 && (read = raf.read(buffer, 0, (int) Math.min(buffer.length, toWrite))) != -1) {
-                os.write(buffer, 0, read);
-                toWrite -= read;
+        // Verwende FileChannel.transferTo für effizienteren Transfer in Chunks.
+
+        try (FileChannel fileChannel = FileChannel.open(file.toPath(), StandardOpenOption.READ);
+             WritableByteChannel outChannel = Channels.newChannel(exchange.getResponseBody())) {
+
+            long position = start;
+            long remaining = contentLength;
+            while (remaining > 0) {
+                long chunk = Math.min(remaining, BUFFER_SIZE);
+                long transferred = fileChannel.transferTo(position, chunk, outChannel);
+                if (transferred <= 0) {
+                    // safety: vermeide infinite-loop, beende wenn nichts mehr transferiert wird
+                    break;
+                }
+                position += transferred;
+                remaining -= transferred;
             }
-            System.out.println(2);
-            os.flush();
+
+            // flush: beim Channels-API ist flush nicht direkt möglich; OutputStream wird beim close geschlossen.
+            // Zumindest sicherstellen, dass wir die ResponseBody-Stream schließen (done durch try-with-resources).
+        } catch (SocketException se) {
+            // Häufige, erwartbare Client-Abbruch-Meldungen (seek/stop/close). Nur kurz loggen.
+            System.out.println(se.getMessage());
         } catch (IOException ex) {
-            // connection closed by client oder ähnliches -> nur loggen
+            // Anderes IO-Problem; loggen (kann weiterhin auftreten, z.B. wenn Netzwerkprobleme)
             System.out.println(ex.getMessage());
+        } finally {
+            try {
+                exchange.getResponseBody().close();
+            } catch (IOException ignored) {}
         }
     }
 

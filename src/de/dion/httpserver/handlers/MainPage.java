@@ -27,7 +27,7 @@ public class MainPage implements HttpHandler {
 
 	@Override
 	public void handle(HttpExchange exchange) throws IOException {
-//		System.out.println("Ping von " + exchange.getLocalAddress().getAddress().toString());
+		System.out.println("Ping von " + exchange.getLocalAddress().getAddress().toString());
 		
         StringBuilder sb = new StringBuilder();
         sb.append("<!DOCTYPE html>\n");

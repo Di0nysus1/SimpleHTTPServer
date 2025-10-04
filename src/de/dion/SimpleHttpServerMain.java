@@ -14,10 +14,6 @@ import de.dion.httpserver.WebServer;
 
 public class SimpleHttpServerMain {
 	
-	
-	//TODO: ordner ganz oben listen  (einfach 2. forschleife  für  ordner
-	//TODO: multithreading
-	
 	private static WebServer website;
 	public static ConfigHelper config;
 
@@ -46,7 +42,7 @@ public class SimpleHttpServerMain {
     private static void doConfigStuff() {
     	Config programConfig = new Config("Program Settings", new ConfigEntry[] {
     			new ConfigEntry("Port", 80, false, "HTTP Port for the Website"),
-    			new ConfigEntry("Download-Buffersize", 32896, false, "Buffersize for transfering Data"),
+    			new ConfigEntry("Download-Buffersize", 2048, false, "Buffersize for transfering Data in KiB"),
     			new ConfigEntry("Preview-Media", true, false, "Should the Users be able to Play Videos and Stuff like that instead of only downloading?"),
     			new ConfigEntry("Show-VideoThumbnails", false, false, "Should Thumbnails be created for Videos on the listing Page?\nffmpeg required!"),
     			new ConfigEntry("Thumbnail-Scale", 640, false, "Default Resolution for the Thumbnails. Example: 640 = 640x360p\nHigher Resolutions take longer to generate."),

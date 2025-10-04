@@ -6,6 +6,7 @@ import java.net.BindException;
 import java.net.InetAddress;
 import java.net.InetSocketAddress;
 import java.net.UnknownHostException;
+import java.util.concurrent.Executors;
 
 import com.sun.net.httpserver.HttpServer;
 
@@ -30,6 +31,7 @@ public class WebServer {
 	private void init() {
 		port = SimpleHttpServerMain.config.getIntValue("Port");
 		FileHandler.BUFFER_SIZE = SimpleHttpServerMain.config.getIntValue("Download-Buffersize");
+		FileHandler.BUFFER_SIZE *= 1024; //umrechnung KiB in Bytes
 		previewMedia = SimpleHttpServerMain.config.getBooleanValue("Preview-Media");
 		showVideoThumbnails = SimpleHttpServerMain.config.getBooleanValue("Show-VideoThumbnails");
 		
@@ -56,10 +58,11 @@ public class WebServer {
     	try {
     		
     		server = HttpServer.create(new InetSocketAddress(port), 0);
-    		
-    		server.setExecutor(null); // creates a default executor
+    		//So viele Threads für Multuthreading wie Cpu Threads erzeugen
+    		server.setExecutor(Executors.newFixedThreadPool(Runtime.getRuntime().availableProcessors()));
     		
     		addFileHandlers();
+    		//Main page
     		server.createContext("/open-config", new OpenConfig());
     		server.createContext("/", new MainPage(port, previewMedia, showVideoThumbnails, shareFolders));
     		
