@@ -128,7 +128,7 @@ public class MainPage implements HttpHandler {
         
         // show Config-Öffnen button only if request comes from local machine (loopback)
         if (OpenConfig.isLocalRequest(exchange)) {
-        	sb.append("      <div style=\"margin-top:8px\"><a class=\"btn btn-secondary\" href=\"/open-config\">Config Öffnen</a></div>\n");
+        	sb.append("      <div style=\"margin-top:8px\"><br /><a class=\"btn btn-secondary\" href=\"/open-config\">Config Öffnen</a></div>\n");
         }
         
         sb.append("    </footer>\n");

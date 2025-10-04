@@ -31,6 +31,7 @@ public class FileHandler implements HttpHandler {
     private final boolean showVideoThumbnails;
     private static ThumbnailManager thumpnailManager = null;
     private static DataServer fileServer = new DataServer(SimpleHttpServerMain.config.getBooleanValue("Filter-FileNames"));
+    DecimalFormat dFormater = new DecimalFormat("###,##0.0");
     public static long BUFFER_SIZE;
 
     /**
@@ -49,6 +50,7 @@ public class FileHandler implements HttpHandler {
         
         if(thumpnailManager == null) {
         	thumpnailManager = new ThumbnailManager(thumbnailScale);
+        	dFormater.setDecimalFormatSymbols(DecimalFormatSymbols.getInstance(Locale.GERMAN));
         }
     }
 
@@ -311,9 +313,6 @@ public class FileHandler implements HttpHandler {
             sb.append("\n    </tr>");
         }
 
-        DecimalFormat dFormater = new DecimalFormat("###,##0.0");
-        dFormater.setDecimalFormatSymbols(DecimalFormatSymbols.getInstance(Locale.GERMAN));
-
         File[] files = dir.listFiles();
         if (files != null) {
             Arrays.sort(files);
@@ -345,19 +344,6 @@ public class FileHandler implements HttpHandler {
                 String relUrl = getEncodedRelativePath(contextPath, f);
                 if (f.isFile()) {
                     String mimeType = getMimeType(f);
-
-                    // calculate size nicely
-                    String unit = "KiB";
-                    double size = f.length();
-                    size = size / 1024.0;
-                    if (size >= 1024) {
-                        size = size / 1024.0;
-                        unit = "MiB";
-                    }
-                    if (size >= 1024) {
-                        size = size / 1024.0;
-                        unit = "GiB";
-                    }
 
                     sb.append("\n    <tr data-name=\"").append(escapeHtml(displayName.toLowerCase())).append("\" data-size=\"").append(f.length()).append("\" data-date=\"").append(f.lastModified()).append("\">");
 
@@ -398,7 +384,7 @@ public class FileHandler implements HttpHandler {
                     sb.append("\n      </td>");
 
                     sb.append("\n      <td class=\"date\">" ).append(new Date(f.lastModified()).toString()).append("</td>");
-                    sb.append("\n      <td class=\"size\">" ).append(dFormater.format(size)).append(" ").append(unit).append("</td>");
+                    sb.append("\n      <td class=\"size\">" ).append(getFileSize(f)).append("</td>");
 
                     // actions
                     sb.append("\n      <td class=\"actions\">");
@@ -490,6 +476,31 @@ public class FileHandler implements HttpHandler {
         sb.append("\n</html>");
 
         return sb.toString();
+    }
+    
+    private String getFileSize(File file) {
+        String unit = "Bytes";
+        double size = file.length();
+        if (size >= 1024) {
+            size = size / 1024.0;
+            unit = "KiB";
+        }
+        if (size >= 1024) {
+            size = size / 1024.0;
+            unit = "MiB";
+        }
+        if (size >= 1024) {
+            size = size / 1024.0;
+            unit = "GiB";
+        }
+        
+        String sizeFormated;
+        if(unit.equals("Bytes")) {
+        	sizeFormated = (int)size + "";
+        }  else {
+        	sizeFormated = dFormater.format(size);
+        }
+		return sizeFormated + " " + unit;
     }
 
     // Gibt Pfad relativ zur baseDir zurück (z.B. "/sub/dir" oder "" wenn baseDir)
