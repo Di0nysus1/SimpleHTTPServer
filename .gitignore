@@ -2,4 +2,5 @@
 /dl/*
 /bin
 /.thumbs
+/uploads
 config.conf
