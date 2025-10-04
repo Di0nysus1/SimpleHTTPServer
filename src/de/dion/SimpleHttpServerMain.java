@@ -19,9 +19,6 @@ public class SimpleHttpServerMain {
     public static void main(String[] args) {
     	System.out.println("SimpleHttpServer Version: " + WebServer.version + " by Di0nysus1");
     	
-    	createDLDir();
-    	doConfigStuff();
-    	
     	boolean start = false;
     	for(String arg : args) {
     		if(arg.equalsIgnoreCase("-start")) {
@@ -33,6 +30,9 @@ public class SimpleHttpServerMain {
     		JOptionPane.showMessageDialog(new JFrame(), "Zum starten bitte per CMD oder Batch file mit Argument '-start' ausführen.");
     		System.exit(0);
     	}
+    	
+    	createDLDir();
+    	doConfigStuff();
     	
     	website = new WebServer();
     	website.start();
