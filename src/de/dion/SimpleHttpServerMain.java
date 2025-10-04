@@ -14,8 +14,8 @@ import de.dion.httpserver.WebServer;
 
 public class SimpleHttpServerMain {
 	
-	//TODO: download all button
 	//TODO: alle todos absuchen
+	//TODO: website auf dem handy nicht abrufbar?
 	
 	private static WebServer website;
 	public static ConfigHelper config;

@@ -1,11 +1,12 @@
 package de.dion.httpserver.handlers;
 
 
+import java.io.BufferedInputStream;
+import java.io.BufferedOutputStream;
 import java.io.File;
+import java.io.FileInputStream;
 import java.io.IOException;
-import java.io.InputStream;
 import java.io.OutputStream;
-import java.io.RandomAccessFile;
 import java.io.UnsupportedEncodingException;
 import java.net.SocketException;
 import java.net.URI;
@@ -16,7 +17,6 @@ import java.nio.channels.FileChannel;
 import java.nio.channels.WritableByteChannel;
 import java.nio.file.Files;
 import java.nio.file.StandardOpenOption;
-import java.security.MessageDigest;
 import java.text.DecimalFormat;
 import java.text.DecimalFormatSymbols;
 import java.util.Arrays;
@@ -24,7 +24,6 @@ import java.util.Date;
 import java.util.HashMap;
 import java.util.Locale;
 import java.util.Map;
-import java.util.concurrent.TimeUnit;
 
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpHandler;
@@ -82,7 +81,20 @@ public class FileHandler implements HttpHandler {
             send404(exchange);
             return;
         }
-
+        
+        Map<String,String> params = parseQuery(query);
+        if (params.containsKey("download_all")) {
+            // nur zulassen, wenn requested ein Verzeichnis ist
+            if (requested.isDirectory()) {
+                String zipName = requested.getName().isEmpty() ? "archive.zip" : requested.getName() + ".zip";
+                serveDirectoryAsZip(exchange, requested, zipName);
+                return;
+            } else {
+                send404(exchange);
+                return;
+            }
+        }
+        
         if (requested.isDirectory()) {
             String response = generateDirectoryListing(contextPath, requested);
             exchange.getResponseHeaders().set("Content-Type", "text/html; charset=utf-8");
@@ -93,10 +105,8 @@ public class FileHandler implements HttpHandler {
             }
             return;
         } else if (requested.isFile()) {
-            String mimeType = Files.probeContentType(requested.toPath());
-            if (mimeType == null) mimeType = "application/octet-stream";
-
-            Map<String, String> params = parseQuery(query);
+            String mimeType = getMimeType(requested);
+            
             boolean isPreviewRequest = previewMedia && params.containsKey("preview");
             boolean isRawRequest = params.containsKey("raw") && "1".equals(params.get("raw"));
             boolean isDownloadRequest = params.containsKey("download");
@@ -133,6 +143,112 @@ public class FileHandler implements HttpHandler {
             return;
         }
     }
+    
+    private void serveDirectoryAsZip(HttpExchange exchange, File dir, String zipFileName) throws IOException {
+        // Header vorbereiten
+        exchange.getResponseHeaders().set("Content-Type", "application/zip");
+        exchange.getResponseHeaders().set("Content-Disposition", "attachment; filename=\"" + zipFileName + "\"");
+
+        // Chunked transfer (Länge unbekannt) -> send 200 with 0
+        exchange.sendResponseHeaders(200, 0);
+
+        OutputStream rawOut = exchange.getResponseBody();
+        BufferedOutputStream bos = new BufferedOutputStream(rawOut);
+        java.util.zip.ZipOutputStream zos = new java.util.zip.ZipOutputStream(bos);
+
+        try {
+            // rekursiv alle Dateien hinzufügen
+            addDirectoryToZip(zos, dir, "");
+            // versuchen, ZIP sauber zu beenden
+            try {
+                zos.finish();
+            } catch (IOException e) {
+                // finish() kann ebenfalls fehlschlagen, z.B. wenn Client schon geschlossen hat
+                if (isClientAbort(e)) {
+                    System.out.println("Client hat die Verbindung beendet während ZIP fertiggestellt wurde.");
+                    return;
+                } else {
+                    throw e;
+                }
+            }
+        } catch (IOException e) {
+            // Unterscheide zwischen Client-Abbruch und echten Fehlern
+            if (isClientAbort(e)) {
+                // sehr häufiger Fall: Nutzer hat Download abgebrochen -> keine lauten Stacktraces
+                System.out.println("Client aborted ZIP download (connection closed).");
+            } else {
+                // Echte Fehler beim Lesen/Schreiben: ausführlicher loggen
+                System.err.println("Fehler beim Erstellen des ZIP-Streams: " + e.toString());
+                e.printStackTrace();
+            }
+        } finally {
+            // Schließe Streams möglichst leise
+            try { zos.close(); } catch (IOException ignored) {}
+            try { exchange.close(); } catch (Exception ignored) {}
+        }
+    }
+
+    /**
+     * Fügt rekursiv Dateien in den ZipOutputStream ein.
+     * Wenn während des Schreibens eine IOException auftritt, wird sie weitergeworfen.
+     */
+    private void addDirectoryToZip(java.util.zip.ZipOutputStream zos, File dir, String parentPrefix) throws IOException {
+        File[] children = dir.listFiles();
+        if (children == null) return;
+
+        Arrays.sort(children);
+        byte[] buffer = new byte[(int) BUFFER_SIZE];
+
+        for (File child : children) {
+            if (child.isHidden()) continue; // optional
+            String entryName = parentPrefix.isEmpty() ? child.getName() : parentPrefix + "/" + child.getName();
+            if (child.isDirectory()) {
+                // add directory entry (optional)
+                java.util.zip.ZipEntry dirEntry = new java.util.zip.ZipEntry(entryName + "/");
+                dirEntry.setTime(child.lastModified());
+                try {
+                    zos.putNextEntry(dirEntry);
+                    zos.closeEntry();
+                } catch (IOException e) {
+                    // weiterwerfen, damit outer handler reagieren kann (z.B. Client closed)
+                    throw e;
+                }
+                addDirectoryToZip(zos, child, entryName);
+            } else if (child.isFile()) {
+                java.util.zip.ZipEntry fileEntry = new java.util.zip.ZipEntry(entryName);
+                fileEntry.setTime(child.lastModified());
+                zos.putNextEntry(fileEntry);
+                try (BufferedInputStream bis = new BufferedInputStream(new FileInputStream(child))) {
+                    int len;
+                    while ((len = bis.read(buffer)) != -1) {
+                        zos.write(buffer, 0, len); // kann IOException werfen -> nach oben
+                    }
+                } catch (IOException e) {
+                    // wichtig: beim Abbruch nicht weiter versuchen, sondern die Exception hochreichen
+                    try { zos.closeEntry(); } catch (Exception ignored) {}
+                    throw e;
+                }
+                zos.closeEntry();
+            }
+        }
+    }
+
+    /** Prüft, ob es sich um ein Client-Abbruch-Problem handelt (verschiedene Server-Implementierungen).
+     *  Wir vergleichen Klassennamen, weil sun.net.httpserver.* nicht immer kompiliersicher importiert werden sollte. */
+    private boolean isClientAbort(Throwable t) {
+        while (t != null) {
+            String cn = t.getClass().getName();
+            if ("sun.net.httpserver.StreamClosedException".equals(cn) ||
+                "org.apache.catalina.connector.ClientAbortException".equals(cn) ||
+                "org.eclipse.jetty.io.EofException".equals(cn)) {
+                return true;
+            }
+            t = t.getCause();
+        }
+        return false;
+    }
+
+
 
     private void send404(HttpExchange exchange) throws IOException {
         String response = "404 Not Found";
@@ -140,6 +256,34 @@ public class FileHandler implements HttpHandler {
         try (OutputStream os = exchange.getResponseBody()) {
             os.write(response.getBytes());
         }
+    }
+    
+    private String getMimeType(File requested) throws IOException {
+    	String mimeType = Files.probeContentType(requested.toPath());
+        if (mimeType == null) {
+        	String ending = requested.getName().toLowerCase();
+        	if(ending.contains(".")) {
+        		ending = ending.substring(ending.lastIndexOf(".") + 1);
+        	}
+        	
+        	switch(ending) {
+        	case "webp":
+        		mimeType = "image/webp";
+        		break;
+        	case "yaml":
+        	case "json":
+        	case "conf":
+        	case "xml":
+        	case "java":
+        	case "cpp":
+        		mimeType = "text/" + ending;
+        		break;
+        	default:
+        		mimeType = "application/octet-stream";
+        		break;
+        	}
+        }
+    	return mimeType;
     }
 
     private boolean isPreviewable(String mimeType) {
@@ -387,8 +531,7 @@ public class FileHandler implements HttpHandler {
                 String displayName = f.getName();
                 String relUrl = getEncodedRelativePath(contextPath, f);
                 if (f.isFile()) {
-                    String mimeType = Files.probeContentType(f.toPath());
-                    if (mimeType == null) mimeType = "application/octet-stream";
+                    String mimeType = getMimeType(f);
 
                     // calculate size nicely
                     String unit = "KiB";
@@ -459,6 +602,21 @@ public class FileHandler implements HttpHandler {
 
         sb.append("\n  </tbody>");
         sb.append("\n</table>");
+        
+     // --- Download all Button (nur anzeigen, wenn files != null und mindestens eine Datei vorhanden) ---
+        boolean hasFiles = false;
+        if (files != null) {
+            for (File f : files) { if (!f.isHidden() && f.isFile()) { hasFiles = true; break; } }
+        }
+        if (hasFiles) {
+            String thisDirRel = getEncodedRelativePath(contextPath, dir);
+            sb.append("\n<div style=\"margin-top:16px;display:flex;justify-content:flex-end;\">");
+            sb.append("\n  <a href=\"").append(thisDirRel).append("?download_all=1\" ");
+            sb.append("style=\"display:inline-block;padding:10px 16px;border-radius:8px;background:linear-gradient(180deg,#133449,#0b2836);color:#fff;font-weight:700;text-decoration:none;\">");
+            sb.append("⬇️ Download all (ZIP)</a>");
+            sb.append("\n</div>");
+        }
+
 
         // Lightbox container (for images)
         sb.append("\n<div id=\"lightbox\" class=\"lightbox\" onclick=\"closeLB()\">");
