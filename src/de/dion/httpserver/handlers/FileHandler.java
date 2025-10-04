@@ -1,22 +1,14 @@
 package de.dion.httpserver.handlers;
 
 
-import java.io.BufferedInputStream;
-import java.io.BufferedOutputStream;
 import java.io.File;
-import java.io.FileInputStream;
 import java.io.IOException;
 import java.io.OutputStream;
 import java.io.UnsupportedEncodingException;
-import java.net.SocketException;
 import java.net.URI;
 import java.net.URLDecoder;
 import java.net.URLEncoder;
-import java.nio.channels.Channels;
-import java.nio.channels.FileChannel;
-import java.nio.channels.WritableByteChannel;
 import java.nio.file.Files;
-import java.nio.file.StandardOpenOption;
 import java.text.DecimalFormat;
 import java.text.DecimalFormatSymbols;
 import java.util.Arrays;
@@ -28,6 +20,8 @@ import java.util.Map;
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpHandler;
 
+import de.dion.SimpleHttpServerMain;
+import de.dion.httpserver.DataServer;
 import de.dion.httpserver.ThumbnailManager;
 
 public class FileHandler implements HttpHandler {
@@ -36,6 +30,7 @@ public class FileHandler implements HttpHandler {
     private final boolean previewMedia;
     private final boolean showVideoThumbnails;
     private static ThumbnailManager thumpnailManager = null;
+    private static DataServer fileServer = new DataServer(SimpleHttpServerMain.config.getBooleanValue("Filter-FileNames"));
     public static long BUFFER_SIZE;
 
     /**
@@ -87,7 +82,7 @@ public class FileHandler implements HttpHandler {
             // nur zulassen, wenn requested ein Verzeichnis ist
             if (requested.isDirectory()) {
                 String zipName = requested.getName().isEmpty() ? "archive.zip" : requested.getName() + ".zip";
-                serveDirectoryAsZip(exchange, requested, zipName);
+                fileServer.serveDirectoryAsZip(exchange, requested, zipName);
                 return;
             } else {
                 send404(exchange);
@@ -126,13 +121,13 @@ public class FileHandler implements HttpHandler {
 
             // Raw request from player/viewer (or fallback) -> serve inline with Range support
             if (isRawRequest || (isPreviewRequest && isPreviewable(mimeType))) {
-                serveFileWithRange(exchange, requested, mimeType, true);
+                fileServer.serveFileWithRange(exchange, requested, mimeType, true);
                 return;
             }
 
             // Explicit download or default -> serve as attachment
             if (isDownloadRequest || !isPreviewRequest) {
-                serveFileWithRange(exchange, requested, mimeType, false);
+                fileServer.serveFileWithRange(exchange, requested, mimeType, false);
                 return;
             }
 
@@ -144,112 +139,6 @@ public class FileHandler implements HttpHandler {
         }
     }
     
-    private void serveDirectoryAsZip(HttpExchange exchange, File dir, String zipFileName) throws IOException {
-        // Header vorbereiten
-        exchange.getResponseHeaders().set("Content-Type", "application/zip");
-        exchange.getResponseHeaders().set("Content-Disposition", "attachment; filename=\"" + zipFileName + "\"");
-
-        // Chunked transfer (Länge unbekannt) -> send 200 with 0
-        exchange.sendResponseHeaders(200, 0);
-
-        OutputStream rawOut = exchange.getResponseBody();
-        BufferedOutputStream bos = new BufferedOutputStream(rawOut);
-        java.util.zip.ZipOutputStream zos = new java.util.zip.ZipOutputStream(bos);
-
-        try {
-            // rekursiv alle Dateien hinzufügen
-            addDirectoryToZip(zos, dir, "");
-            // versuchen, ZIP sauber zu beenden
-            try {
-                zos.finish();
-            } catch (IOException e) {
-                // finish() kann ebenfalls fehlschlagen, z.B. wenn Client schon geschlossen hat
-                if (isClientAbort(e)) {
-                    System.out.println("Client hat die Verbindung beendet während ZIP fertiggestellt wurde.");
-                    return;
-                } else {
-                    throw e;
-                }
-            }
-        } catch (IOException e) {
-            // Unterscheide zwischen Client-Abbruch und echten Fehlern
-            if (isClientAbort(e)) {
-                // sehr häufiger Fall: Nutzer hat Download abgebrochen -> keine lauten Stacktraces
-                System.out.println("Client aborted ZIP download (connection closed).");
-            } else {
-                // Echte Fehler beim Lesen/Schreiben: ausführlicher loggen
-                System.err.println("Fehler beim Erstellen des ZIP-Streams: " + e.toString());
-                e.printStackTrace();
-            }
-        } finally {
-            // Schließe Streams möglichst leise
-            try { zos.close(); } catch (IOException ignored) {}
-            try { exchange.close(); } catch (Exception ignored) {}
-        }
-    }
-
-    /**
-     * Fügt rekursiv Dateien in den ZipOutputStream ein.
-     * Wenn während des Schreibens eine IOException auftritt, wird sie weitergeworfen.
-     */
-    private void addDirectoryToZip(java.util.zip.ZipOutputStream zos, File dir, String parentPrefix) throws IOException {
-        File[] children = dir.listFiles();
-        if (children == null) return;
-
-        Arrays.sort(children);
-        byte[] buffer = new byte[(int) BUFFER_SIZE];
-
-        for (File child : children) {
-            if (child.isHidden()) continue; // optional
-            String entryName = parentPrefix.isEmpty() ? child.getName() : parentPrefix + "/" + child.getName();
-            if (child.isDirectory()) {
-                // add directory entry (optional)
-                java.util.zip.ZipEntry dirEntry = new java.util.zip.ZipEntry(entryName + "/");
-                dirEntry.setTime(child.lastModified());
-                try {
-                    zos.putNextEntry(dirEntry);
-                    zos.closeEntry();
-                } catch (IOException e) {
-                    // weiterwerfen, damit outer handler reagieren kann (z.B. Client closed)
-                    throw e;
-                }
-                addDirectoryToZip(zos, child, entryName);
-            } else if (child.isFile()) {
-                java.util.zip.ZipEntry fileEntry = new java.util.zip.ZipEntry(entryName);
-                fileEntry.setTime(child.lastModified());
-                zos.putNextEntry(fileEntry);
-                try (BufferedInputStream bis = new BufferedInputStream(new FileInputStream(child))) {
-                    int len;
-                    while ((len = bis.read(buffer)) != -1) {
-                        zos.write(buffer, 0, len); // kann IOException werfen -> nach oben
-                    }
-                } catch (IOException e) {
-                    // wichtig: beim Abbruch nicht weiter versuchen, sondern die Exception hochreichen
-                    try { zos.closeEntry(); } catch (Exception ignored) {}
-                    throw e;
-                }
-                zos.closeEntry();
-            }
-        }
-    }
-
-    /** Prüft, ob es sich um ein Client-Abbruch-Problem handelt (verschiedene Server-Implementierungen).
-     *  Wir vergleichen Klassennamen, weil sun.net.httpserver.* nicht immer kompiliersicher importiert werden sollte. */
-    private boolean isClientAbort(Throwable t) {
-        while (t != null) {
-            String cn = t.getClass().getName();
-            if ("sun.net.httpserver.StreamClosedException".equals(cn) ||
-                "org.apache.catalina.connector.ClientAbortException".equals(cn) ||
-                "org.eclipse.jetty.io.EofException".equals(cn)) {
-                return true;
-            }
-            t = t.getCause();
-        }
-        return false;
-    }
-
-
-
     private void send404(HttpExchange exchange) throws IOException {
         String response = "404 Not Found";
         exchange.sendResponseHeaders(404, response.length());
@@ -341,82 +230,6 @@ public class FileHandler implements HttpHandler {
     }
 
 
-    private void serveFileWithRange(HttpExchange exchange, File file, String mimeType, boolean inline) throws IOException {
-        long fileLength = file.length();
-        String range = exchange.getRequestHeaders().getFirst("Range");
-        long start = 0;
-        long end = fileLength - 1;
-        boolean isPartial = false;
-
-        if (range != null && range.startsWith("bytes=")) {
-            String[] parts = range.substring("bytes=".length()).split("-", 2);
-            try {
-                if (parts.length > 0 && !parts[0].isEmpty()) start = Long.parseLong(parts[0].trim());
-                if (parts.length > 1 && !parts[1].isEmpty()) end = Long.parseLong(parts[1].trim());
-                if (start < 0) start = 0;
-                if (end > fileLength - 1) end = fileLength - 1;
-                if (start > end) {
-                    exchange.getResponseHeaders().set("Content-Range", "bytes */" + fileLength);
-                    exchange.sendResponseHeaders(416, -1);
-                    return;
-                }
-                isPartial = true;
-            } catch (NumberFormatException e) {
-                start = 0;
-                end = fileLength - 1;
-                isPartial = false;
-            }
-        }
-
-        long contentLength = end - start + 1;
-
-        if (inline) {
-            exchange.getResponseHeaders().set("Content-Disposition", "inline; filename=\"" + file.getName() + "\"");
-        } else {
-            exchange.getResponseHeaders().set("Content-Disposition", "attachment; filename=\"" + file.getName() + "\"");
-        }
-        exchange.getResponseHeaders().set("Content-Type", mimeType);
-        exchange.getResponseHeaders().set("Accept-Ranges", "bytes");
-
-        if (isPartial) {
-            exchange.getResponseHeaders().set("Content-Range", "bytes " + start + "-" + end + "/" + fileLength);
-            exchange.sendResponseHeaders(206, contentLength);
-        } else {
-            exchange.sendResponseHeaders(200, contentLength);
-        }
-
-        // Verwende FileChannel.transferTo für effizienteren Transfer in Chunks.
-
-        try (FileChannel fileChannel = FileChannel.open(file.toPath(), StandardOpenOption.READ);
-             WritableByteChannel outChannel = Channels.newChannel(exchange.getResponseBody())) {
-
-            long position = start;
-            long remaining = contentLength;
-            while (remaining > 0) {
-                long chunk = Math.min(remaining, BUFFER_SIZE);
-                long transferred = fileChannel.transferTo(position, chunk, outChannel);
-                if (transferred <= 0) {
-                    // safety: vermeide infinite-loop, beende wenn nichts mehr transferiert wird
-                    break;
-                }
-                position += transferred;
-                remaining -= transferred;
-            }
-
-            // flush: beim Channels-API ist flush nicht direkt möglich; OutputStream wird beim close geschlossen.
-            // Zumindest sicherstellen, dass wir die ResponseBody-Stream schließen (done durch try-with-resources).
-        } catch (SocketException se) {
-            // Häufige, erwartbare Client-Abbruch-Meldungen (seek/stop/close). Nur kurz loggen.
-            System.out.println(se.getMessage());
-        } catch (IOException ex) {
-            // Anderes IO-Problem; loggen (kann weiterhin auftreten, z.B. wenn Netzwerkprobleme)
-            System.out.println(ex.getMessage());
-        } finally {
-            try {
-                exchange.getResponseBody().close();
-            } catch (IOException ignored) {}
-        }
-    }
 
     private String generateDirectoryListing(String contextPath, File dir) throws IOException {
         StringBuilder sb = new StringBuilder();
@@ -424,7 +237,7 @@ public class FileHandler implements HttpHandler {
         sb.append("\n<html lang=\"de\">");
         sb.append("\n<head>");
         sb.append("\n  <meta charset=\"utf-8\">");
-        sb.append("\n  <meta name=\"viewport\" content=\"width=device-width,initial-scale=1\">");
+        sb.append("\n  <meta name=\"viewport\" content=\"width=device-width,initial-scale=0.45\">");
         sb.append("\n  <title>Index of ").append(escapeHtml(getRelativePath(dir))).append("</title>");
 
         // CSS -- moderne, dunkle Listing-Page mit Buttons, Icons, Thumbs, Lightbox

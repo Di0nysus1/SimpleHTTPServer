@@ -18,7 +18,7 @@ import de.dion.httpserver.handlers.UploadHandler;
 
 public class WebServer {
 
-	public static final String version = "1.3";
+	public static final String version = "2.0";
 	private int port;
 	private boolean previewMedia;
 	private String[] shareFolders = new String[0];
@@ -88,7 +88,7 @@ public class WebServer {
     	} catch(BindException e) {
     		System.err.println("Es läuft bereits ein Server auf port 80!");
     	} catch (Exception e1) {
-			// TODO Auto-generated catch block
+    		System.err.println("Server konnte nicht gestartet werden!");
 			e1.printStackTrace();
 		}
     }

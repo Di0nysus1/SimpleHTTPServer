@@ -45,12 +45,10 @@ public class OpenConfig implements HttpHandler {
         // Kein Body mehr nötig, da umgeleitet wird
     }
 	
-	// prüft, ob der anfragende Host ein Loopback (localhost / 127.* / ::1) ist
 	static boolean isLocalRequest(HttpExchange exchange) {
 		try {
 			InetAddress remote = exchange.getRemoteAddress().getAddress();
-			// isLoopbackAddress() deckt 127.* und ::1 ab
-			return remote.isLoopbackAddress();
+			return remote.getHostAddress().equals("127.0.0.1");
 		} catch (Exception e) {
 			return false;
 		}

@@ -1,7 +1,6 @@
 package de.dion;
 
 import java.io.File;
-import java.io.IOException;
 
 import javax.swing.JFrame;
 import javax.swing.JOptionPane;
@@ -13,9 +12,6 @@ import de.dion.config.exceptions.WrongFileTypeException;
 import de.dion.httpserver.WebServer;
 
 public class SimpleHttpServerMain {
-	
-	//TODO: alle todos absuchen
-	//TODO: website auf dem handy nicht abrufbar?
 	
 	private static WebServer website;
 	public static ConfigHelper config;
@@ -45,7 +41,8 @@ public class SimpleHttpServerMain {
     private static void doConfigStuff() {
     	Config programConfig = new Config("Program Settings", new ConfigEntry[] {
     			new ConfigEntry("Port", 80, false, "HTTP Port for the Website"),
-    			new ConfigEntry("Download-Buffersize", 2048, false, "Buffersize for transfering Data in KiB"),
+    			new ConfigEntry("Download-Buffersize", 2048, false, "Buffersize for transfering Data in KiB\nLass einfach die Finger davon"),
+    			new ConfigEntry("Filter-FileNames", false, false, "Should special characters  be extracted from Filenames for Streaming?"),
     			new ConfigEntry("Preview-Media", true, false, "Should the Users be able to Play Videos and Stuff like that instead of only downloading?"),
     			new ConfigEntry("Show-VideoThumbnails", false, false, "Should Thumbnails be created for Videos on the listing Page?\nffmpeg required!"),
     			new ConfigEntry("Thumbnail-Scale", 640, false, "Default Resolution for the Thumbnails. Example: 640 = 640x360p\nHigher Resolutions take longer to generate."),
@@ -56,10 +53,7 @@ public class SimpleHttpServerMain {
     	
     	try {
 			config = new ConfigHelper(programConfig, new File("config.conf"));
-		} catch (WrongFileTypeException e) {
-			// TODO Auto-generated catch block
-			e.printStackTrace();
-		}
+		} catch (WrongFileTypeException ignored) {}
     	
     	config.read();
     }

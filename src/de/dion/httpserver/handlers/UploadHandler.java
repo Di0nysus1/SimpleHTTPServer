@@ -67,7 +67,7 @@ public class UploadHandler implements HttpHandler {
         sb.append("<html lang=\"de\">\n");
         sb.append("<head>\n");
         sb.append("  <meta charset=\"utf-8\">\n");
-        sb.append("  <meta name=\"viewport\" content=\"width=device-width,initial-scale=1\">\n");
+        sb.append("  <meta name=\"viewport\" content=\"width=device-width,initial-scale=0.7\">\n");
         sb.append("  <title>Upload - Simple HTTP Server</title>\n");
         sb.append("  <style>\n");
         sb.append("    :root{--bg:#0b1320;--card:#0f1724;--muted:#9aa4b2;--accent:#ff9900;--link:#00aaff;--ok:#00ff88}\n");

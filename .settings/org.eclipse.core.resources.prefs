@@ -1,2 +1,3 @@
 eclipse.preferences.version=1
+encoding//src/de/dion/httpserver/DataServer.java=UTF-8
 encoding//src/de/dion/httpserver/handlers/FileHandler.java=UTF-8

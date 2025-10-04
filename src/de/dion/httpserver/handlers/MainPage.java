@@ -9,7 +9,6 @@ import java.nio.charset.StandardCharsets;
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpHandler;
 
-import de.dion.SimpleHttpServerMain;
 import de.dion.httpserver.WebServer;
 
 public class MainPage implements HttpHandler {
@@ -32,14 +31,14 @@ public class MainPage implements HttpHandler {
 
 	@Override
 	public void handle(HttpExchange exchange) throws IOException {
-		System.out.println("Ping von " + exchange.getLocalAddress().getAddress().toString());
+		System.out.println("Ping von " + exchange.getRemoteAddress().getAddress().toString());
 		
         StringBuilder sb = new StringBuilder();
         sb.append("<!DOCTYPE html>\n");
         sb.append("<html lang=\"de\">\n");
         sb.append("<head>\n");
         sb.append("  <meta charset=\"utf-8\">\n");
-        sb.append("  <meta name=\"viewport\" content=\"width=device-width,initial-scale=1\">\n");
+        sb.append("  <meta name=\"viewport\" content=\"width=device-width,initial-scale=0.7\">\n");
         sb.append("  <title>Simple HTTP Server</title>\n");
         
         sb.append("  <style>\n");
