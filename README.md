@@ -32,3 +32,5 @@ Ideal for sharing files inside a LAN (e.g. with friends at a LAN party). The UI 
 
 * Java 8+ runtime
 * (Optional) `ffmpeg` for video thumbnail generation
+* Allow the app through Windows Defender Firewall (enable access on your Private network) so other PCs on the LAN can see and connect to your server.
+
