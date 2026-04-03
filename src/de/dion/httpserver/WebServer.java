@@ -63,7 +63,7 @@ public class WebServer {
     	try {
     		
     		server = HttpServer.create(new InetSocketAddress(port), 0);
-    		//So viele Threads f�r Multuthreading wie Cpu Threads erzeugen
+    		//So viele Threads für Multuthreading wie Cpu Threads erzeugen
     		server.setExecutor(Executors.newFixedThreadPool(Runtime.getRuntime().availableProcessors()));
     		
     		//Alle Sub-Pages erstellen
