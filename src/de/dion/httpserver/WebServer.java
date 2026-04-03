@@ -100,7 +100,15 @@ public class WebServer {
 		
 		for(String path: shareFolders) {
 			System.out.println("Externer Ordner \"" + path + "\" wird geshared");
-			server.createContext("/" + path, new FileHandler(path, previewMedia, showVideoThumbnails, thumbnailScale));
+			File checkPath = new File(path);
+			
+			if(checkPath.exists() && checkPath.isDirectory()) {
+				server.createContext("/" + path, new FileHandler(path, previewMedia, showVideoThumbnails, thumbnailScale));
+			} else if(checkPath.exists()) {
+				System.err.println("\"" + path + "\" ist kein Verzeichnis!");
+			} else {
+				System.err.println("\"" + path + "\" konnte nicht gefunden werden!");
+			}
 		}
 		
 		if(showVideoThumbnails) {
