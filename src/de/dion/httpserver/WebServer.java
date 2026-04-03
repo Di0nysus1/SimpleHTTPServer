@@ -63,7 +63,7 @@ public class WebServer {
     	try {
     		
     		server = HttpServer.create(new InetSocketAddress(port), 0);
-    		//So viele Threads für Multuthreading wie Cpu Threads erzeugen
+    		//So viele Threads fï¿½r Multuthreading wie Cpu Threads erzeugen
     		server.setExecutor(Executors.newFixedThreadPool(Runtime.getRuntime().availableProcessors()));
     		
     		//Alle Sub-Pages erstellen
@@ -86,7 +86,7 @@ public class WebServer {
     		
     		server.start();
     	} catch(BindException e) {
-    		System.err.println("Es läuft bereits ein Server auf port 80!");
+    		System.err.println("Es lï¿½uft bereits ein Server auf port 80!");
     	} catch (Exception e1) {
     		System.err.println("Server konnte nicht gestartet werden!");
 			e1.printStackTrace();
@@ -96,7 +96,7 @@ public class WebServer {
 	private void addFileHandlers() throws IOException {
 		int thumbnailScale = SimpleHttpServerMain.config.getIntValue("Thumbnail-Scale");
 		
-		server.createContext("/dl", new FileHandler("dl", previewMedia, showVideoThumbnails, thumbnailScale));
+		server.createContext("/dl", new FileHandler("DL", previewMedia, showVideoThumbnails, thumbnailScale));
 		
 		for(String path: shareFolders) {
 			System.out.println("Externer Ordner \"" + path + "\" wird geshared");

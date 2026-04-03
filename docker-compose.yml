@@ -1,0 +1,8 @@
+services:
+  httpserver:
+    image: sha256:3d13b01b2acaa5f9f7e8c560a70c15c8a9654a285ea1c9966eba1e5d36827ba2
+    ports:
+      - "80:80"
+    volumes:
+      - /:/app/DL
+    restart: unless-stopped
