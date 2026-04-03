@@ -383,7 +383,7 @@ public class FileHandler implements HttpHandler {
                     }
                     sb.append("\n      </td>");
 
-                    sb.append("\n      <td class=\"date\">" ).append(new Date(f.lastModified()).toString()).append("</td>");
+                    sb.append("\n      <td class=\"date\">" ).append(new Date(f.lastModified()).toLocaleString()).append("</td>");
                     sb.append("\n      <td class=\"size\">" ).append(getFileSize(f)).append("</td>");
 
                     // actions
